@@ -1,5 +1,6 @@
 package com.remotemenu.ui
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -7,44 +8,57 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import com.remotemenu.MainViewModel
+import com.remotemenu.R
 import com.remotemenu.model.CustomOption
 import com.remotemenu.model.MenuItem
 import com.remotemenu.model.OrderItem
-import androidx.compose.foundation.clickable
-import androidx.compose.ui.platform.LocalContext
 import com.remotemenu.bluetooth.BluetoothPrinter
 
 @Composable
-fun OrderScreen(modifier: Modifier = Modifier, vm: MainViewModel) {
-
-    var selectedTable by remember { mutableStateOf(1) }
+fun OrderScreen(
+    modifier: Modifier = Modifier,
+    vm: MainViewModel
+) {
+    /** -----------------------------
+     * UI 상태
+     * ----------------------------- */
+    var selectedTable by remember { mutableIntStateOf(1) }
     var selectedMenu by remember { mutableStateOf<MenuItem?>(null) }
     var qty by remember { mutableStateOf("1") }
     val selectedOptions = remember { mutableStateListOf<CustomOption>() }
 
+    val context = LocalContext.current
+
+    /** -----------------------------
+     * 화면 레이아웃
+     * ----------------------------- */
     Column(modifier.padding(16.dp)) {
 
-        Text("테이블 선택", style = MaterialTheme.typography.titleMedium)
-        Row {
-            OutlinedTextField(
-                value = selectedTable.toString(),
-                onValueChange = {
-                    val t = it.toIntOrNull()
-                    if (t != null && t > 0) selectedTable = t
-                },
-                label = { Text("테이블 번호") },
-                modifier = Modifier.weight(1f)
-            )
-        }
+        /** 테이블 선택 */
+        Text(stringResource(R.string.select_table), style = MaterialTheme.typography.titleMedium)
+
+        OutlinedTextField(
+            value = selectedTable.toString(),
+            onValueChange = {
+                val t = it.toIntOrNull()
+                if (t != null && t > 0) selectedTable = t
+            },
+            label = { Text(stringResource(R.string.table_number)) },
+            modifier = Modifier.fillMaxWidth()
+        )
 
         Spacer(Modifier.height(16.dp))
 
-        Text("메뉴 선택", style = MaterialTheme.typography.titleMedium)
-        LazyColumn {
+        /** 메뉴 선택 */
+        Text(stringResource(R.string.select_menu), style = MaterialTheme.typography.titleMedium)
+
+        LazyColumn(modifier = Modifier.weight(1f)) {
             items(vm.menuItems) { item ->
                 Card(
-                    Modifier
+                    modifier = Modifier
                         .fillMaxWidth()
                         .padding(4.dp)
                         .clickable { selectedMenu = item }
@@ -57,20 +71,25 @@ fun OrderScreen(modifier: Modifier = Modifier, vm: MainViewModel) {
             }
         }
 
+        /** 선택된 메뉴 → 주문 설정 */
         selectedMenu?.let { menu ->
+
             Spacer(Modifier.height(16.dp))
-            Text("주문 설정", style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(R.string.order_settings), style = MaterialTheme.typography.titleMedium)
 
             OutlinedTextField(
                 value = qty,
                 onValueChange = { qty = it.filter(Char::isDigit) },
-                label = { Text("수량") }
+                label = { Text(stringResource(R.string.quantity)) },
+                modifier = Modifier.fillMaxWidth()
             )
 
             Spacer(Modifier.height(8.dp))
 
+            /** 커스텀 옵션 선택 */
             if (menu.customOptions.isNotEmpty()) {
-                Text("커스텀 옵션")
+                Text(stringResource(R.string.custom_options))
+
                 menu.customOptions.forEach { opt ->
                     Row {
                         Checkbox(
@@ -87,48 +106,65 @@ fun OrderScreen(modifier: Modifier = Modifier, vm: MainViewModel) {
 
             Spacer(Modifier.height(8.dp))
 
-            Button(onClick = {
-                val q = qty.toIntOrNull() ?: 1
-                vm.addOrder(selectedTable, menu, q, selectedOptions.toList())
-                selectedOptions.clear()
-                qty = "1"
-            }) { Text("추가") }
+            /** 주문 추가 버튼 */
+            Button(
+                onClick = {
+                    val q = qty.toIntOrNull() ?: 1
+                    vm.addOrder(selectedTable, menu, q, selectedOptions.toList())
+                    selectedOptions.clear()
+                    qty = "1"
+                    selectedMenu = null
+                }
+            ) {
+                Text(stringResource(R.string.add))
+            }
         }
 
         Spacer(Modifier.height(16.dp))
 
-        Text("주문 목록", style = MaterialTheme.typography.titleMedium)
-        LazyColumn {
+        /** 주문 목록 */
+        Text(stringResource(R.string.order_list), style = MaterialTheme.typography.titleMedium)
+
+        LazyColumn(modifier = Modifier.weight(1f)) {
             items(vm.currentOrders) { order: OrderItem ->
-                Card(Modifier.fillMaxWidth().padding(4.dp)) {
-                    Row(Modifier.padding(8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(4.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
                         Column {
-                            Text("테이블 ${order.tableNumber}")
+                            Text(stringResource(R.string.table_format, order.tableNumber))
                             Text("${order.menuItem.name} x${order.quantity}")
                         }
-                        Button(onClick = { vm.removeOrder(order) }) { Text("삭제") }
+                        Button(onClick = { vm.removeOrder(order) }) {
+                            Text(stringResource(R.string.delete))
+                        }
                     }
                 }
             }
         }
 
         Spacer(Modifier.height(16.dp))
-        val context = LocalContext.current
+
+        /** 주문 확정 + 프린트 */
         Button(
             onClick = {
-                vm.confirmOrders { text ->
-                    // 나중에 Bluetooth 프린트 연결
-                    val printer = vm.selectedPrinter.value
+                val printer = vm.selectedPrinter.value
 
-                    if (printer != null) {
-                        vm.confirmOrders { text ->
-                            val bp = BluetoothPrinter(context)
-                            bp.printToDevice(printer, text)
-                        }
+                if (printer != null) {
+                    vm.confirmOrders(context) { text ->
+                        val bp = BluetoothPrinter(context)
+                        bp.printToDevice(printer, text)
                     }
                 }
             },
             modifier = Modifier.fillMaxWidth()
-        ) { Text("주문 확정 및 프린트") }
+        ) {
+            Text(stringResource(R.string.confirm_order_and_print))
+        }
     }
 }

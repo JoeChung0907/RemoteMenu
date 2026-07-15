@@ -1,68 +1,138 @@
 package com.remotemenu
 
+import android.Manifest
+import android.bluetooth.BluetoothDevice
+import android.bluetooth.BluetoothManager
+import android.content.Context
+import android.content.pm.PackageManager
+import androidx.core.content.ContextCompat
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import com.remotemenu.model.*
-import android.bluetooth.BluetoothManager
-import android.bluetooth.BluetoothDevice
-import androidx.core.content.ContextCompat
-import android.Manifest
-import android.content.Context
-import android.content.pm.PackageManager
+import kotlinx.coroutines.launch
 
-
+/**
+ * MainViewModel
+ * 앱의 핵심 상태(메뉴, 주문, 기록, 프린터)를 관리하고
+ * StorageManager를 통해 저장/불러오기 기능을 수행한다.
+ */
 class MainViewModel : ViewModel() {
 
+    /** -----------------------------
+     * UI 상태
+     * ----------------------------- */
     val tableCount = mutableStateOf(1)
     val menuItems = mutableStateListOf<MenuItem>()
     val currentOrders = mutableStateListOf<OrderItem>()
     val orderHistory = mutableStateListOf<OrderHistoryItem>()
     val bluetoothPrinters = mutableStateListOf<BluetoothDevice>()
-
     val selectedPrinter = mutableStateOf<BluetoothDevice?>(null)
 
-    fun loadBluetoothPrinters(context: Context) {
-        // BluetoothManager 에서 Adapter 가져오기
-        val manager = context.getSystemService(BluetoothManager::class.java)
-        val adapter = manager?.adapter ?: return
-
-        // Android 12+ 권한 체크
-        val hasPermission = ContextCompat.checkSelfPermission(
-            context,
-            Manifest.permission.BLUETOOTH_CONNECT
-        ) == PackageManager.PERMISSION_GRANTED
-
-        if (!hasPermission) return
-
-        // 페어링된 기기 목록 가져오기
-        val paired = adapter.bondedDevices
-
-        // 상태 업데이트
-        bluetoothPrinters.clear()
-        bluetoothPrinters.addAll(paired)
-    }
-    fun selectPrinter(device: BluetoothDevice) {
-        selectedPrinter.value = device
-    }
-
+    /** -----------------------------
+     * 내부 ID 관리
+     * ----------------------------- */
     private var menuId = 1
     private var optionId = 1
     private var orderId = 1
     private var historyId = 1
 
-    fun addMenu(name: String, price: Int, allergy: String, options: List<String>) {
-        val optionObjs = options.map { CustomOption(optionId++, it) }
-        menuItems.add(
+    /** -----------------------------
+     * 앱 초기화 (저장된 데이터 복원 및 ID 동기화)
+     * ----------------------------- */
+    fun initialize(context: Context) {
+        val storage = StorageManager()
 
-            MenuItem(menuId++, name, price, allergy, optionObjs)
+        viewModelScope.launch {
+            val data = storage.loadAll(context)
+
+            if (data.isEmpty) {
+                resetInternalState()
+                return@launch
+            }
+
+            // 데이터 복원
+            menuItems.clear()
+            menuItems.addAll(data.menus)
+            tableCount.value = data.tableCount
+            orderHistory.clear()
+            orderHistory.addAll(data.history)
+
+            // ID 동기화: 기존 데이터 중 최대 ID를 찾아 다음 ID로 설정
+            menuId = (menuItems.maxOfOrNull { it.id } ?: 0) + 1
+            optionId = (menuItems.flatMap { it.customOptions }.maxOfOrNull { it.id } ?: 0) + 1
+            historyId = (orderHistory.maxOfOrNull { it.id } ?: 0) + 1
+            orderId = 1 // currentOrders는 비휘발성이 아니므로 1부터 시작 가능
+
+            val savedName = data.printerName
+            if (savedName != null) {
+                val hasPermission = ContextCompat.checkSelfPermission(
+                    context,
+                    Manifest.permission.BLUETOOTH_CONNECT
+                ) == PackageManager.PERMISSION_GRANTED
+                
+                if (hasPermission) {
+                    val device = bluetoothPrinters.firstOrNull { it.name == savedName }
+                    selectedPrinter.value = device
+                }
+            }
+        }
+    }
+
+    private fun resetInternalState() {
+        tableCount.value = 1
+        menuItems.clear()
+        currentOrders.clear()
+        orderHistory.clear()
+        selectedPrinter.value = null
+        menuId = 1
+        optionId = 1
+        orderId = 1
+        historyId = 1
+    }
+
+    /** -----------------------------
+     * 데이터 저장 (즉시 저장용)
+     * ----------------------------- */
+    fun forceSave(context: Context) {
+        val storage = StorageManager()
+        val data = StorageManager.LoadedData(
+            menus = menuItems.toList(),
+            tableCount = tableCount.value,
+            history = orderHistory.toList(),
+            printerName = selectedPrinter.value?.name
         )
+        viewModelScope.launch {
+            storage.saveAll(context, data)
+        }
     }
 
-    fun removeMenu(item: MenuItem) {
+    /** -----------------------------
+     * 메뉴 관리
+     * ----------------------------- */
+    fun addMenu(context: Context, name: String, price: Int, allergy: String, options: List<String>) {
+        val optionObjs = options.map { CustomOption(optionId++, it) }
+        menuItems.add(MenuItem(menuId++, name, price, allergy, optionObjs))
+        forceSave(context)
+    }
+
+    fun removeMenu(context: Context, item: MenuItem) {
         menuItems.remove(item)
+        forceSave(context)
     }
 
+    /** -----------------------------
+     * 테이블 설정 관리
+     * ----------------------------- */
+    fun updateTableCount(context: Context, count: Int) {
+        tableCount.value = count
+        forceSave(context)
+    }
+
+    /** -----------------------------
+     * 주문 관리
+     * ----------------------------- */
     fun addOrder(table: Int, menu: MenuItem, qty: Int, opts: List<CustomOption>) {
         currentOrders.add(
             OrderItem(orderId++, table, menu, qty, opts, opts.isNotEmpty())
@@ -73,18 +143,22 @@ class MainViewModel : ViewModel() {
         currentOrders.remove(order)
     }
 
-    fun updateQty(order: OrderItem, newQty: Int) {
-        if (order.isCustom) return
-        val idx = currentOrders.indexOf(order)
-        if (idx != -1) currentOrders[idx] = order.copy(quantity = newQty)
+    /** -----------------------------
+     * 데이터 초기화
+     * ----------------------------- */
+    fun resetAllData(context: Context, onComplete: () -> Unit) {
+        val storage = StorageManager()
+        viewModelScope.launch {
+            storage.clearAll(context)
+            resetInternalState()
+            onComplete()
+        }
     }
 
-    fun clearOrders() {
-        currentOrders.clear()
-    }
-
-    // 주문 내역 데이터 ( 프린트에 사용할 것)
-    fun confirmOrders(onPrint: (String) -> Unit) {
+    /** -----------------------------
+     * 주문 확정 → 프린트용 텍스트 생성 + 기록 저장
+     * ----------------------------- */
+    fun confirmOrders(context: Context, onPrint: (String) -> Unit) {
         if (currentOrders.isEmpty()) return
 
         val sb = StringBuilder()
@@ -93,7 +167,6 @@ class MainViewModel : ViewModel() {
         currentOrders.groupBy { it.tableNumber }.forEach { (table, list) ->
             sb.append("[테이블 $table]\n")
             list.forEach { o ->
-                // 리스트 포맷
                 sb.append("메뉴: ${o.menuItem.name}\n")
                 sb.append("수량: ${o.quantity}\n")
 
@@ -119,5 +192,34 @@ class MainViewModel : ViewModel() {
         )
 
         currentOrders.clear()
+        forceSave(context)
+    }
+
+    /** -----------------------------
+     * Bluetooth 프린터 목록 로딩
+     * ----------------------------- */
+    fun loadBluetoothPrinters(context: Context) {
+        val manager = context.getSystemService(BluetoothManager::class.java)
+        val adapter = manager?.adapter ?: return
+
+        val hasPermission = ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.BLUETOOTH_CONNECT
+        ) == PackageManager.PERMISSION_GRANTED
+
+        if (!hasPermission) return
+
+        val paired = adapter.bondedDevices
+
+        bluetoothPrinters.clear()
+        bluetoothPrinters.addAll(paired)
+    }
+
+    /** -----------------------------
+     * 프린터 선택
+     * ----------------------------- */
+    fun selectPrinter(context: Context, device: BluetoothDevice) {
+        selectedPrinter.value = device
+        forceSave(context)
     }
 }
