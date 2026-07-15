@@ -12,7 +12,8 @@ import com.remotemenu.model.CustomOption
 import com.remotemenu.model.MenuItem
 import com.remotemenu.model.OrderItem
 import androidx.compose.foundation.clickable
-
+import androidx.compose.ui.platform.LocalContext
+import com.remotemenu.bluetooth.BluetoothPrinter
 
 @Composable
 fun OrderScreen(modifier: Modifier = Modifier, vm: MainViewModel) {
@@ -112,12 +113,19 @@ fun OrderScreen(modifier: Modifier = Modifier, vm: MainViewModel) {
         }
 
         Spacer(Modifier.height(16.dp))
-
+        val context = LocalContext.current
         Button(
             onClick = {
                 vm.confirmOrders { text ->
                     // 나중에 Bluetooth 프린트 연결
-                    println(text)
+                    val printer = vm.selectedPrinter.value
+
+                    if (printer != null) {
+                        vm.confirmOrders { text ->
+                            val bp = BluetoothPrinter(context)
+                            bp.printToDevice(printer, text)
+                        }
+                    }
                 }
             },
             modifier = Modifier.fillMaxWidth()

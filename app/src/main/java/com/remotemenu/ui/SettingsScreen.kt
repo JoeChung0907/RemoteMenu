@@ -1,7 +1,6 @@
 package com.remotemenu.ui
 
 import android.widget.NumberPicker
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -15,7 +14,10 @@ import androidx.compose.ui.viewinterop.AndroidView
 import com.remotemenu.MainViewModel
 import androidx.compose.ui.Alignment
 import androidx.compose.material3.AssistChip
-import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.clickable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.platform.LocalContext
+import com.remotemenu.bluetooth.BluetoothPrinter
 
 @Composable
 fun SettingsScreen(modifier: Modifier = Modifier, vm: MainViewModel) {
@@ -44,7 +46,7 @@ fun SettingsScreen(modifier: Modifier = Modifier, vm: MainViewModel) {
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
 
-            // 메뉴 리스트 (최대 길이 2배로 증가)
+            // 메뉴 리스트
             Card(
                 modifier = Modifier.wrapContentSize().fillMaxWidth(),
                 colors = CardDefaults.cardColors(MaterialTheme.colorScheme.surfaceVariant)
@@ -78,18 +80,65 @@ fun SettingsScreen(modifier: Modifier = Modifier, vm: MainViewModel) {
                     }
                 }
             }
-
-            // 프린터 관리
+            // ---------------------------------------------------------
+            // 촤측 상단 패널 : 프린터 관리 메뉴
+            // ---------------------------------------------------------
             Card(
-                modifier = Modifier.wrapContentSize().fillMaxWidth(),
+                modifier = Modifier
+                    .wrapContentSize()
+                    .fillMaxWidth(),
                 colors = CardDefaults.cardColors(MaterialTheme.colorScheme.surfaceVariant)
             ) {
                 Column(Modifier.padding(16.dp)) {
                     Text("프린터 관리", style = MaterialTheme.typography.titleMedium)
                     Spacer(Modifier.height(8.dp))
-                    Text("프린터 연결 상태: 연결 안됨", style = MaterialTheme.typography.bodySmall)
+                    val context = LocalContext.current
+
+                    //
+                    LaunchedEffect(Unit) {
+                        vm.loadBluetoothPrinters(context)
+                    }
+
+                    // 연결 상태 표시 (아직 선택 기능 없으니 기본값)
+                    val printerName = vm.selectedPrinter.value?.name ?: "연결 안됨"
+
+                    Text(
+                        "프린터 연결 상태: $printerName",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+
+                    Spacer(Modifier.height(12.dp))
+
+                    //  페어링된 프린터 목록 표시
+                    Text("페어링된 프린터 목록", style = MaterialTheme.typography.bodyMedium)
                     Spacer(Modifier.height(8.dp))
-                    Button(onClick = { /* 테스트 출력 */ }) { Text("테스트 출력") }
+
+                    if (vm.bluetoothPrinters.isEmpty()) {
+                        Text("검색된 프린터 없음")
+                    } else {
+                        vm.bluetoothPrinters.forEach { device ->
+                            Text(
+                                text = device.name,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        vm.selectPrinter(device)
+                                    }
+                                    .padding(vertical = 4.dp)
+                            )
+                        }
+                    }
+
+                    Spacer(Modifier.height(16.dp))
+
+                    Button(onClick = {
+                        val printer = vm.selectedPrinter.value
+                        if (printer != null) {
+                            val bp = BluetoothPrinter(context)
+                            bp.printToDevice(printer, "테스트 출력입니다.")
+                        } }) {
+                        Text("주문 출력")
+                    }
                 }
             }
 
