@@ -5,6 +5,7 @@ import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
 import android.content.Context
 import android.content.pm.PackageManager
+import android.os.Build
 import androidx.core.content.ContextCompat
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -19,6 +20,8 @@ import kotlinx.coroutines.launch
  * StorageManager를 통해 저장/불러오기 기능을 수행한다.
  */
 class MainViewModel : ViewModel() {
+
+    private val storage = StorageManager()
 
     /** -----------------------------
      * UI 상태
@@ -42,8 +45,6 @@ class MainViewModel : ViewModel() {
      * 앱 초기화 (저장된 데이터 복원 및 ID 동기화)
      * ----------------------------- */
     fun initialize(context: Context) {
-        val storage = StorageManager()
-
         viewModelScope.launch {
             val data = storage.loadAll(context)
 
@@ -59,19 +60,19 @@ class MainViewModel : ViewModel() {
             orderHistory.clear()
             orderHistory.addAll(data.history)
 
-            // ID 동기화: 기존 데이터 중 최대 ID를 찾아 다음 ID로 설정
+            // ID 동기화
             menuId = (menuItems.maxOfOrNull { it.id } ?: 0) + 1
             optionId = (menuItems.flatMap { it.customOptions }.maxOfOrNull { it.id } ?: 0) + 1
             historyId = (orderHistory.maxOfOrNull { it.id } ?: 0) + 1
-            orderId = 1 // currentOrders는 비휘발성이 아니므로 1부터 시작 가능
+            orderId = 1
 
+            // 저장된 프린터 복원 (권한 체크 포함)
             val savedName = data.printerName
             if (savedName != null) {
-                val hasPermission = ContextCompat.checkSelfPermission(
-                    context,
-                    Manifest.permission.BLUETOOTH_CONNECT
-                ) == PackageManager.PERMISSION_GRANTED
-                
+                val hasPermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED
+                } else true
+
                 if (hasPermission) {
                     val device = bluetoothPrinters.firstOrNull { it.name == savedName }
                     selectedPrinter.value = device
@@ -96,7 +97,6 @@ class MainViewModel : ViewModel() {
      * 데이터 저장 (즉시 저장용)
      * ----------------------------- */
     fun forceSave(context: Context) {
-        val storage = StorageManager()
         val data = StorageManager.LoadedData(
             menus = menuItems.toList(),
             tableCount = tableCount.value,
@@ -147,7 +147,6 @@ class MainViewModel : ViewModel() {
      * 데이터 초기화
      * ----------------------------- */
     fun resetAllData(context: Context, onComplete: () -> Unit) {
-        val storage = StorageManager()
         viewModelScope.launch {
             storage.clearAll(context)
             resetInternalState()
@@ -186,11 +185,7 @@ class MainViewModel : ViewModel() {
         val text = sb.toString()
         onPrint(text)
 
-        orderHistory.add(
-            0,
-            OrderHistoryItem(historyId++, time, text)
-        )
-
+        orderHistory.add(0, OrderHistoryItem(historyId++, time, text))
         currentOrders.clear()
         forceSave(context)
     }
@@ -202,14 +197,20 @@ class MainViewModel : ViewModel() {
         val manager = context.getSystemService(BluetoothManager::class.java)
         val adapter = manager?.adapter ?: return
 
-        val hasPermission = ContextCompat.checkSelfPermission(
-            context,
-            Manifest.permission.BLUETOOTH_CONNECT
-        ) == PackageManager.PERMISSION_GRANTED
+        // Android 12 이상에서만 BLUETOOTH_CONNECT 체크
+        val hasPermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED
+        } else {
+            true // Android 10 이하는 설치 시 자동 승인됨
+        }
 
         if (!hasPermission) return
 
-        val paired = adapter.bondedDevices
+        val paired = try {
+            adapter.bondedDevices
+        } catch (e: SecurityException) {
+            emptySet()
+        }
 
         bluetoothPrinters.clear()
         bluetoothPrinters.addAll(paired)

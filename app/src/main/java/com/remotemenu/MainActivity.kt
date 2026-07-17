@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.core.app.ActivityCompat
@@ -23,37 +24,48 @@ import com.remotemenu.ui.theme.RemoteMenuTheme
 
 class MainActivity : ComponentActivity() {
 
-    private val bluetoothPermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-        Manifest.permission.BLUETOOTH_CONNECT
-    } else {
-        "android.permission.BLUETOOTH" // API 31 미만용 대체 권한
-    }
-    
     private val requestCode = 100
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        requestBluetoothPermission()
-    }
-
-    private fun requestBluetoothPermission() {
-        val granted = ContextCompat.checkSelfPermission(
-            this,
-            bluetoothPermission
-        ) == PackageManager.PERMISSION_GRANTED
-
-        if (granted) {
+        
+        // 안드로이드 10(API 29) 이하인 경우 런타임 권한 요청 없이 바로 실행
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+            Log.d("PermissionCheck", "Android 10 이하 기기이므로 권한 요청을 건너뜁니다.")
             launchApp()
         } else {
-            ActivityCompat.requestPermissions(
-                this,
-                arrayOf(bluetoothPermission),
-                requestCode
-            )
+            requestRequiredPermissions()
         }
     }
 
-    @Deprecated("Deprecated in Java")
+    /** -----------------------------
+     * 필수 권한 요청 (Android 12 이상)
+     * ----------------------------- */
+    private fun requestRequiredPermissions() {
+        val permissions = mutableListOf<String>()
+
+        // Android 13+ 용 미디어/알림 권한
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            permissions += Manifest.permission.POST_NOTIFICATIONS
+            permissions += Manifest.permission.READ_MEDIA_IMAGES
+        }
+
+        // Android 12+ 용 블루투스 권한
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            permissions += Manifest.permission.BLUETOOTH_CONNECT
+        }
+
+        val needRequest = permissions.filter {
+            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+        }
+
+        if (needRequest.isNotEmpty()) {
+            ActivityCompat.requestPermissions(this, needRequest.toTypedArray(), requestCode)
+        } else {
+            launchApp()
+        }
+    }
+
     override fun onRequestPermissionsResult(
         requestCode: Int,
         permissions: Array<out String>,
@@ -62,12 +74,8 @@ class MainActivity : ComponentActivity() {
         @Suppress("DEPRECATION")
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
 
-        val granted = grantResults.isNotEmpty() &&
-                grantResults[0] == PackageManager.PERMISSION_GRANTED
-
-        if (requestCode == this.requestCode && granted) {
-            launchApp()
-        }
+        // 권한 결과와 상관없이 일단 실행 (필요한 기능 사용 시점에 다시 체크)
+        launchApp()
     }
 
     private fun launchApp() {
