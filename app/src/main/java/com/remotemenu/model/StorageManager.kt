@@ -10,15 +10,19 @@ import com.google.gson.reflect.TypeToken
 
 /**
  * StorageManager
- * 앱의 모든 데이터를 DataStore에 저장/불러오기하는 역할.
+ * 앱의 모든 데이터를 DataStore에 저장하고 불러오는 영속성 관리 클래스.
  */
 
+// DataStore 확장 프로퍼티 정의
 val Context.dataStore by preferencesDataStore(name = "remotemenu_store")
 
 class StorageManager {
 
     private val gson = Gson()
 
+    /** -----------------------------
+     * 저장 키 정의
+     * ----------------------------- */
     private object Keys {
         val MENU_ITEMS = stringPreferencesKey("menu_items")
         val TABLE_COUNT = stringPreferencesKey("table_count")
@@ -27,7 +31,7 @@ class StorageManager {
     }
 
     /** -----------------------------
-     * 모든 데이터 한 번에 불러오기
+     * 데이터 모델 (일괄 로드용)
      * ----------------------------- */
     data class LoadedData(
         val menus: List<MenuItem> = emptyList(),
@@ -37,12 +41,16 @@ class StorageManager {
         val isEmpty: Boolean = false
     )
 
+    /** -----------------------------
+     * 모든 데이터 일괄 불러오기
+     * ----------------------------- */
     suspend fun loadAll(context: Context): LoadedData {
         val prefs = context.dataStore.data.first()
         
         val menuJson = prefs[Keys.MENU_ITEMS]
         val historyJson = prefs[Keys.ORDER_HISTORY]
         
+        // JSON 역직렬화
         val menus: List<MenuItem> = if (menuJson != null) {
             gson.fromJson(menuJson, object : TypeToken<List<MenuItem>>() {}.type)
         } else emptyList()
@@ -56,17 +64,11 @@ class StorageManager {
 
         val isEmpty = menus.isEmpty() && history.isEmpty() && printerName == null
 
-        return LoadedData(
-            menus = menus,
-            tableCount = tableCount,
-            history = history,
-            printerName = printerName,
-            isEmpty = isEmpty
-        )
+        return LoadedData(menus, tableCount, history, printerName, isEmpty)
     }
 
     /** -----------------------------
-     * 모든 데이터 저장 (효율 개선)
+     * 모든 데이터 일괄 저장 (트랜잭션)
      * ----------------------------- */
     suspend fun saveAll(context: Context, data: LoadedData) {
         context.dataStore.edit { prefs ->
@@ -82,7 +84,7 @@ class StorageManager {
     }
 
     /** -----------------------------
-     * 모든 데이터 초기화
+     * 전체 데이터 삭제
      * ----------------------------- */
     suspend fun clearAll(context: Context) {
         context.dataStore.edit { prefs ->

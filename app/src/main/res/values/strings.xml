@@ -1,9 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 <string name="app_name">RemoteMenu</string>
+
+<!-- Navigation -->
 <string name="tab_settings">설정</string>
 <string name="tab_order">주문</string>
 <string name="tab_history">기록</string>
+
+<!-- Printer Management -->
 <string name="printer_management">프린터 관리</string>
 <string name="printer_status">프린터 연결 상태: %1$s</string>
 <string name="printer_not_connected">연결 안됨</string>
@@ -11,28 +15,31 @@
 <string name="no_printers_found">검색된 프린터 없음</string>
 <string name="print_test_order">주문 출력</string>
 <string name="test_print_text">테스트 출력입니다.</string>
-<string name="menu_list">메뉴 리스트</string>
-<string name="delete">삭제</string>
+
+<!-- Add Menu -->
 <string name="add_menu">메뉴 추가</string>
 <string name="menu_name">메뉴 이름</string>
 <string name="price_currency">가격 (통화 : £ )</string>
+<string name="price_format">£%1$d</string>
 <string name="allergy_info">알러지 정보</string>
 <string name="select">선택</string>
 <string name="add_option">옵션 추가</string>
 <string name="options_prefix">옵션: %1$s</string>
 <string name="save_menu">메뉴 저장</string>
-<string name="allergy_selection">알러지 선택</string>
-<string name="confirm">확인</string>
-<string name="cancel">취소</string>
+<string name="delete">삭제</string>
+<string name="menu_list">메뉴 리스트</string>
+
+<!-- Settings -->
 <string name="menu_settings">메뉴 설정</string>
-<string name="sort_criteria">분류 기준</string>
-<string name="sort_name">이름순</string>
-<string name="sort_price">가격순</string>
-<string name="sort_recent">최근 추가순</string>
-<string name="current_sort_format">현재 분류 방식: %1$s</string>
+<string name="language_settings">언어 설정</string>
+<string name="lang_ko">한국어</string>
+<string name="lang_en">English</string>
 <string name="table_count">테이블 개수</string>
+<string name="current_sort_format">현재 분류 방식: %1$s</string>
 <string name="current_table_count_format">현재 테이블 개수: %1$s</string>
 <string name="apply">적용</string>
+
+<!-- System -->
 <string name="system_management">시스템 관리</string>
 <string name="reset_warning">주의: 모든 메뉴, 주문 기록, 설정이 삭제됩니다.</string>
 <string name="reset_all_data">전체 데이터 초기화</string>
@@ -40,6 +47,10 @@
 <string name="reset_dialog_message">정말로 모든 데이터를 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.</string>
 <string name="reset_confirm">초기화</string>
 <string name="reset_complete">모든 데이터가 초기화되었습니다.</string>
+<string name="confirm">확인</string>
+<string name="cancel">취소</string>
+
+<!-- Order -->
 <string name="select_table">테이블 선택</string>
 <string name="table_number">테이블 번호</string>
 <string name="select_menu">메뉴 선택</string>
@@ -50,8 +61,20 @@
 <string name="order_list">주문 목록</string>
 <string name="table_format">테이블 %1$d</string>
 <string name="confirm_order_and_print">주문 확정 및 프린트</string>
+
+<!-- History -->
 <string name="order_history">주문 기록</string>
 <string name="history_empty">주문 기록이 없습니다.</string>
+
+<!-- Receipt Format -->
+<string name="receipt_table_prefix">[테이블 %1$d]\n</string>
+<string name="receipt_menu">메뉴: %1$s\n</string>
+<string name="receipt_quantity">수량: %1$d\n</string>
+<string name="receipt_options">옵션:\n</string>
+<string name="receipt_total">합계: £%1$d\n</string>
+<string name="receipt_divider">----------------------\n</string>
+
+<!-- Allergies -->
 <string name="allergy_milk">우유</string>
 <string name="allergy_egg">계란</string>
 <string name="allergy_peanut">땅콩</string>
@@ -61,4 +84,5 @@
 <string name="allergy_fish">생선</string>
 <string name="allergy_nut">견과류</string>
 <string name="allergy_sesame">참깨</string>
+<string name="allergy_selection">알러지 선택</string>
 </resources>

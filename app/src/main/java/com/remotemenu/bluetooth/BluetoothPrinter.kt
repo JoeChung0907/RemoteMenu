@@ -13,19 +13,22 @@ import java.util.UUID
 
 /**
  * BluetoothPrinter
- * 선택된 BluetoothDevice로 텍스트를 출력하는 기능만 담당.
+ * 선택된 블루투스 기기로 데이터를 전송하여 인쇄를 수행하는 클래스.
  */
 class BluetoothPrinter(private val context: Context) {
 
+    // 표준 시리얼 포트 프로파일(SPP) UUID
     private val printerUUID: UUID =
         UUID.fromString("00001101-0000-1000-8000-00805F9B34FB")
 
     /** -----------------------------
-     * 선택된 BluetoothDevice로 텍스트 출력
+     * 블루투스 출력 실행
      * ----------------------------- */
     fun printToDevice(device: BluetoothDevice, text: String) {
 
-        // Android 12+ 런타임 권한 체크 (안드로이드 10 이하는 무조건 true)
+        /** -----------------------------
+         * 안드로이드 버전별 권한 체크
+         * ----------------------------- */
         val hasPermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             ContextCompat.checkSelfPermission(
                 context,
@@ -43,27 +46,33 @@ class BluetoothPrinter(private val context: Context) {
         var socket: BluetoothSocket? = null
 
         try {
-            Log.i("BluetoothPrinter", "Starting connection to ${device.name ?: device.address}")
+            Log.i("BluetoothPrinter", "Connecting to device...")
             
-            // RFCOMM 소켓 연결 시도
+            // RFCOMM 소켓 생성 및 연결
             socket = device.createRfcommSocketToServiceRecord(printerUUID)
             socket.connect()
 
             val outputStream = socket.outputStream
 
-            // 텍스트 전송 (EUC-KR 인코딩 권장 - 한글 프린터일 경우)
-            // 영어만 쓸 경우 UTF-8도 무관하지만, 프린터 호환성을 위해 체크 필요
+            /** -----------------------------
+             * 데이터 전송 (UTF-8 인코딩)
+             * ----------------------------- */
             outputStream.write(text.toByteArray(Charsets.UTF_8))
+            
+            // 용지 배출을 위한 여백 추가
             outputStream.write("\n\n\n".toByteArray())
             outputStream.flush()
 
-            Log.i("BluetoothPrinter", "Printed successfully: $text")
+            Log.i("BluetoothPrinter", "Printed successfully")
 
         } catch (e: IOException) {
             Log.e("BluetoothPrinter", "Printing failed: ${e.message}")
             e.printStackTrace()
 
         } finally {
+            /** -----------------------------
+             * 자원 해제 (소켓 닫기)
+             * ----------------------------- */
             try {
                 socket?.close()
                 Log.i("BluetoothPrinter", "Socket closed")

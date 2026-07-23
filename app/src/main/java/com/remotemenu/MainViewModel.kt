@@ -13,11 +13,11 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.remotemenu.model.*
 import kotlinx.coroutines.launch
+import java.util.*
 
 /**
  * MainViewModel
- * 앱의 핵심 상태(메뉴, 주문, 기록, 프린터)를 관리하고
- * StorageManager를 통해 저장/불러오기 기능을 수행한다.
+ * 앱의 핵심 상태 관리 및 데이터 영속성을 담당하는 클래스.
  */
 class MainViewModel : ViewModel() {
 
@@ -32,6 +32,7 @@ class MainViewModel : ViewModel() {
     val orderHistory = mutableStateListOf<OrderHistoryItem>()
     val bluetoothPrinters = mutableStateListOf<BluetoothDevice>()
     val selectedPrinter = mutableStateOf<BluetoothDevice?>(null)
+    val currentLanguage = mutableStateOf("ko")
 
     /** -----------------------------
      * 내부 ID 관리
@@ -42,7 +43,7 @@ class MainViewModel : ViewModel() {
     private var historyId = 1
 
     /** -----------------------------
-     * 앱 초기화 (저장된 데이터 복원 및 ID 동기화)
+     * 앱 초기화
      * ----------------------------- */
     fun initialize(context: Context) {
         viewModelScope.launch {
@@ -53,20 +54,17 @@ class MainViewModel : ViewModel() {
                 return@launch
             }
 
-            // 데이터 복원
             menuItems.clear()
             menuItems.addAll(data.menus)
             tableCount.value = data.tableCount
             orderHistory.clear()
             orderHistory.addAll(data.history)
 
-            // ID 동기화
             menuId = (menuItems.maxOfOrNull { it.id } ?: 0) + 1
             optionId = (menuItems.flatMap { it.customOptions }.maxOfOrNull { it.id } ?: 0) + 1
             historyId = (orderHistory.maxOfOrNull { it.id } ?: 0) + 1
             orderId = 1
 
-            // 저장된 프린터 복원 (권한 체크 포함)
             val savedName = data.printerName
             if (savedName != null) {
                 val hasPermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -94,7 +92,7 @@ class MainViewModel : ViewModel() {
     }
 
     /** -----------------------------
-     * 데이터 저장 (즉시 저장용)
+     * 데이터 저장
      * ----------------------------- */
     fun forceSave(context: Context) {
         val data = StorageManager.LoadedData(
@@ -144,7 +142,7 @@ class MainViewModel : ViewModel() {
     }
 
     /** -----------------------------
-     * 데이터 초기화
+     * 전체 데이터 초기화
      * ----------------------------- */
     fun resetAllData(context: Context, onComplete: () -> Unit) {
         viewModelScope.launch {
@@ -155,7 +153,7 @@ class MainViewModel : ViewModel() {
     }
 
     /** -----------------------------
-     * 주문 확정 → 프린트용 텍스트 생성 + 기록 저장
+     * 주문 확정 (다국어 영수증 생성)
      * ----------------------------- */
     fun confirmOrders(context: Context, onPrint: (String) -> Unit) {
         if (currentOrders.isEmpty()) return
@@ -164,21 +162,21 @@ class MainViewModel : ViewModel() {
         val time = System.currentTimeMillis()
 
         currentOrders.groupBy { it.tableNumber }.forEach { (table, list) ->
-            sb.append("[테이블 $table]\n")
+            sb.append(context.getString(R.string.receipt_table_prefix, table))
             list.forEach { o ->
-                sb.append("메뉴: ${o.menuItem.name}\n")
-                sb.append("수량: ${o.quantity}\n")
+                sb.append(context.getString(R.string.receipt_menu, o.menuItem.name))
+                sb.append(context.getString(R.string.receipt_quantity, o.quantity))
 
                 if (o.selectedOptions.isNotEmpty()) {
-                    sb.append("옵션:\n")
+                    sb.append(context.getString(R.string.receipt_options))
                     o.selectedOptions.forEach { opt ->
                         sb.append(" - ${opt.label}\n")
                     }
                 }
 
                 val itemTotal = o.menuItem.price * o.quantity
-                sb.append("합계: £$itemTotal\n")
-                sb.append("----------------------\n")
+                sb.append(context.getString(R.string.receipt_total, itemTotal))
+                sb.append(context.getString(R.string.receipt_divider))
             }
         }
 
@@ -191,24 +189,21 @@ class MainViewModel : ViewModel() {
     }
 
     /** -----------------------------
-     * Bluetooth 프린터 목록 로딩
+     * Bluetooth 프린터 목록 로드
      * ----------------------------- */
     fun loadBluetoothPrinters(context: Context) {
         val manager = context.getSystemService(BluetoothManager::class.java)
         val adapter = manager?.adapter ?: return
 
-        // Android 12 이상에서만 BLUETOOTH_CONNECT 체크
         val hasPermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED
-        } else {
-            true // Android 10 이하는 설치 시 자동 승인됨
-        }
+        } else true
 
         if (!hasPermission) return
 
         val paired = try {
             adapter.bondedDevices
-        } catch (e: SecurityException) {
+        } catch (_: SecurityException) {
             emptySet()
         }
 
@@ -222,5 +217,12 @@ class MainViewModel : ViewModel() {
     fun selectPrinter(context: Context, device: BluetoothDevice) {
         selectedPrinter.value = device
         forceSave(context)
+    }
+
+    /** -----------------------------
+     * 언어 설정 변경
+     * ----------------------------- */
+    fun setLanguage(lang: String) {
+        currentLanguage.value = lang
     }
 }

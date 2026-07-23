@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -26,17 +27,19 @@ import androidx.core.content.ContextCompat
 import com.remotemenu.R
 import com.remotemenu.bluetooth.BluetoothPrinter
 
+/**
+ * SettingsScreen
+ * 프린터 연결, 메뉴 관리, 언어 설정 등 앱의 전반적인 설정을 담당하는 화면 컴포저블.
+ */
 @Composable
 fun SettingsScreen(modifier: Modifier = Modifier, vm: MainViewModel) {
 
     val context = LocalContext.current
 
     /** -----------------------------
-     * UI 상태 및 리소스 변수 (경고 해결을 위해 상단 배치)
+     * UI 상태 및 리소스 변수
      * ----------------------------- */
     var appliedFontScale by remember { mutableFloatStateOf(1.0f) }
-    
-    // onClick 내에서 context.getString() 사용 경고를 피하기 위해 미리 선언
     val testPrintText = stringResource(R.string.test_print_text)
     val resetCompleteText = stringResource(R.string.reset_complete)
 
@@ -58,12 +61,10 @@ fun SettingsScreen(modifier: Modifier = Modifier, vm: MainViewModel) {
         ) {
 
             /** -----------------------------
-             * 프린터 관리
+             * 프린터 관리 섹션
              * ----------------------------- */
             Card(
-                modifier = Modifier
-                    .wrapContentSize()
-                    .fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(MaterialTheme.colorScheme.surfaceVariant)
             ) {
                 Column(Modifier.padding(16.dp)) {
@@ -74,96 +75,82 @@ fun SettingsScreen(modifier: Modifier = Modifier, vm: MainViewModel) {
                         vm.loadBluetoothPrinters(context)
                     }
 
-                    // Android 12 이상일 경우에만 BLUETOOTH_CONNECT 권한 체크
+                    // 블루투스 권한 확인 (버전별 분기)
                     val hasPermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                        ContextCompat.checkSelfPermission(
-                            context,
-                            Manifest.permission.BLUETOOTH_CONNECT
-                        ) == PackageManager.PERMISSION_GRANTED
-                    } else {
-                        true
-                    }
+                        ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED
+                    } else true
 
                     val printerName = if (hasPermission) {
                         vm.selectedPrinter.value?.name ?: stringResource(R.string.printer_not_connected)
-                    } else {
+                    } else stringResource(R.string.printer_not_connected)
+
+                    // 현재 연결 상태 표시
+                    val statusText = if (vm.selectedPrinter.value == null) {
                         stringResource(R.string.printer_not_connected)
+                    } else {
+                        "${stringResource(R.string.printer_management)}: $printerName"
                     }
 
-                    Text(
-                        stringResource(R.string.printer_status, printerName),
-                        style = MaterialTheme.typography.bodySmall
-                    )
-
+                    Text(statusText, style = MaterialTheme.typography.bodyMedium)
+                    
                     Spacer(Modifier.height(12.dp))
 
-                    Text(stringResource(R.string.paired_printers), style = MaterialTheme.typography.bodyMedium)
-                    Spacer(Modifier.height(8.dp))
-
-                    if (vm.bluetoothPrinters.isEmpty()) {
-                        Text(stringResource(R.string.no_printers_found))
-                    } else {
-                        vm.bluetoothPrinters.forEach { device ->
-                            val deviceName = try {
-                                if (hasPermission) device.name ?: device.address else device.address
-                            } catch (_: SecurityException) {
-                                device.address
-                            }
-                            
-                            Text(
-                                text = deviceName,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        vm.selectPrinter(context, device)
-                                    }
-                                    .padding(vertical = 4.dp)
-                            )
+                    // 페어링된 블루투스 기기 목록
+                    vm.bluetoothPrinters.forEach { device ->
+                        val deviceName = try {
+                            if (hasPermission) device.name ?: device.address else device.address
+                        } catch (_: SecurityException) {
+                            device.address
                         }
+                        
+                        Text(
+                            text = deviceName,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { vm.selectPrinter(context, device) }
+                                .padding(vertical = 4.dp),
+                            style = MaterialTheme.typography.bodySmall
+                        )
                     }
 
-                    Spacer(Modifier.height(16.dp))
+                    Spacer(Modifier.height(8.dp))
 
-                    Button(onClick = {
-                        val printer = vm.selectedPrinter.value
-                        if (printer != null) {
-                            val bp = BluetoothPrinter(context)
-                            bp.printToDevice(printer, testPrintText)
-                        } }) {
+                    // 테스트 인쇄 버튼
+                    Button(
+                        onClick = {
+                            val printer = vm.selectedPrinter.value
+                            if (printer != null) {
+                                BluetoothPrinter(context).printToDevice(printer, testPrintText)
+                            }
+                        },
+                        modifier = Modifier.align(Alignment.End)
+                    ) {
                         Text(stringResource(R.string.print_test_order))
                     }
                 }
             }
 
             /** -----------------------------
-             * 메뉴 리스트 (생략 - 기존 로직 유지)
+             * 등록된 메뉴 리스트 섹션
              * ----------------------------- */
             Card(
-                modifier = Modifier.wrapContentSize().fillMaxWidth(),
+                modifier = Modifier.weight(1f).fillMaxWidth(),
                 colors = CardDefaults.cardColors(MaterialTheme.colorScheme.surfaceVariant)
             ) {
                 Column(Modifier.padding(16.dp)) {
                     Text(stringResource(R.string.menu_list), style = MaterialTheme.typography.titleMedium)
                     Spacer(Modifier.height(8.dp))
 
-                    LazyColumn(
-                        modifier = Modifier.heightIn(max = 600.dp)
-                    ) {
+                    LazyColumn {
                         items(vm.menuItems) { item ->
                             Row(
-                                Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 6.dp),
+                                Modifier.fillMaxWidth().padding(vertical = 6.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Column(Modifier.weight(1f)) {
-                                    Text(item.name, fontSize = MaterialTheme.typography.bodyMedium.fontSize * appliedFontScale)
-                                    Text(
-                                        "£${item.price}",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        fontSize = MaterialTheme.typography.bodySmall.fontSize * appliedFontScale
-                                    )
+                                    Text(item.name, style = MaterialTheme.typography.bodyMedium)
+                                    Text("£${item.price}", style = MaterialTheme.typography.bodySmall)
                                 }
                                 Button(onClick = { vm.removeMenu(context, item) }) { Text(stringResource(R.string.delete)) }
                             }
@@ -171,11 +158,10 @@ fun SettingsScreen(modifier: Modifier = Modifier, vm: MainViewModel) {
                     }
                 }
             }
-            Spacer(Modifier.weight(1f))
         }
 
         /** -----------------------------
-         * 우측 패널 (메뉴 추가 + 설정 + 초기화)
+         * 우측 패널 (메뉴 추가 + 앱 설정)
          * ----------------------------- */
         LazyColumn(
             modifier = Modifier
@@ -183,10 +169,12 @@ fun SettingsScreen(modifier: Modifier = Modifier, vm: MainViewModel) {
                 .fillMaxHeight(),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            /** 메뉴 추가 로직 (기존 유지) */
+            /** -----------------------------
+             * 메뉴 추가 섹션
+             * ----------------------------- */
             item {
                 Card(
-                    modifier = Modifier.wrapContentSize().fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(MaterialTheme.colorScheme.surfaceVariant)
                 ) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -212,6 +200,7 @@ fun SettingsScreen(modifier: Modifier = Modifier, vm: MainViewModel) {
                             modifier = Modifier.fillMaxWidth()
                         )
 
+                        // 알러지 목록 정의
                         val allergyItems = listOf(
                             stringResource(R.string.allergy_milk),
                             stringResource(R.string.allergy_egg),
@@ -238,16 +227,24 @@ fun SettingsScreen(modifier: Modifier = Modifier, vm: MainViewModel) {
                             Button(onClick = { showAllergyDialog = true }) { Text(stringResource(R.string.select)) }
                         }
 
+                        // 알러지 선택 다이얼로그
                         if (showAllergyDialog) {
                             AlertDialog(
                                 onDismissRequest = { showAllergyDialog = false },
                                 title = { Text(stringResource(R.string.allergy_selection)) },
                                 text = {
-                                    Column {
+                                    Column(
+                                        modifier = Modifier
+                                            .heightIn(max = 400.dp)
+                                            .verticalScroll(rememberScrollState())
+                                    ) {
                                         allergyItems.forEach { item ->
                                             Row(
                                                 verticalAlignment = Alignment.CenterVertically,
-                                                modifier = Modifier.fillMaxWidth()
+                                                modifier = Modifier.fillMaxWidth().clickable {
+                                                    if (selectedAllergies.contains(item)) selectedAllergies.remove(item)
+                                                    else selectedAllergies.add(item)
+                                                }
                                             ) {
                                                 Checkbox(
                                                     checked = selectedAllergies.contains(item),
@@ -273,6 +270,7 @@ fun SettingsScreen(modifier: Modifier = Modifier, vm: MainViewModel) {
                             )
                         }
 
+                        // 옵션 추가
                         Row {
                             OutlinedTextField(
                                 value = optionText,
@@ -293,6 +291,7 @@ fun SettingsScreen(modifier: Modifier = Modifier, vm: MainViewModel) {
                             Text(stringResource(R.string.options_prefix, options.joinToString()), style = MaterialTheme.typography.bodySmall)
                         }
 
+                        // 메뉴 저장 버튼
                         Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
                             Button(onClick = {
                                 val p = price.toIntOrNull()
@@ -306,55 +305,40 @@ fun SettingsScreen(modifier: Modifier = Modifier, vm: MainViewModel) {
                 }
             }
 
-            /** 메뉴 설정 (기존 유지) */
+            /** -----------------------------
+             * 시스템 설정 섹션 (언어 및 테이블)
+             * ----------------------------- */
             item {
-                val sortName = stringResource(R.string.sort_name)
-                val sortPrice = stringResource(R.string.sort_price)
-                val sortRecent = stringResource(R.string.sort_recent)
-                
-                var appliedSort by remember { mutableStateOf(sortName) }
-                var previewSort by remember { mutableStateOf(appliedSort) }
-
-                var appliedTableCount by remember { mutableIntStateOf(vm.tableCount.value) }
-                var previewTableCount by remember { mutableIntStateOf(appliedTableCount) }
-
                 Card(
-                    modifier = Modifier.wrapContentSize().fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(MaterialTheme.colorScheme.surfaceVariant)
                 ) {
                     Column(Modifier.padding(16.dp)) {
                         Text(stringResource(R.string.menu_settings), style = MaterialTheme.typography.titleMedium)
-                        Spacer(Modifier.height(8.dp))
-                        Text(stringResource(R.string.sort_criteria), style = MaterialTheme.typography.bodySmall)
-                        Spacer(Modifier.height(4.dp))
-
-                        val sortOptions = listOf(sortName, sortPrice, sortRecent)
-                        Row(
-                            Modifier.horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            sortOptions.forEach { opt ->
-                                AssistChip(
-                                    onClick = {
-                                        when (opt) {
-                                            sortName -> vm.menuItems.sortBy { it.name }
-                                            sortPrice -> vm.menuItems.sortBy { it.price }
-                                            sortRecent -> vm.menuItems.sortByDescending { it.id }
-                                        }
-                                        previewSort = opt
-                                    },
-                                    label = { Text(opt) },
-                                    colors = AssistChipDefaults.assistChipColors(
-                                        containerColor = if (appliedSort == opt) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface
-                                    )
-                                )
-                            }
-                        }
-
-                        Spacer(Modifier.height(8.dp))
-                        Text(stringResource(R.string.current_sort_format, appliedSort), style = MaterialTheme.typography.bodySmall)
                         Spacer(Modifier.height(12.dp))
 
+                        // 언어 설정 전환
+                        Text(stringResource(R.string.language_settings), style = MaterialTheme.typography.bodySmall)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            AssistChip(
+                                onClick = { vm.setLanguage("ko") },
+                                label = { Text(stringResource(R.string.lang_ko)) },
+                                colors = AssistChipDefaults.assistChipColors(
+                                    containerColor = if (vm.currentLanguage.value == "ko") MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface
+                                )
+                            )
+                            AssistChip(
+                                onClick = { vm.setLanguage("en") },
+                                label = { Text(stringResource(R.string.lang_en)) },
+                                colors = AssistChipDefaults.assistChipColors(
+                                    containerColor = if (vm.currentLanguage.value == "en") MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface
+                                )
+                            )
+                        }
+
+                        Spacer(Modifier.height(16.dp))
+
+                        // 테이블 개수 설정 (NumberPicker)
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(stringResource(R.string.table_count))
                             Spacer(Modifier.width(12.dp))
@@ -363,48 +347,37 @@ fun SettingsScreen(modifier: Modifier = Modifier, vm: MainViewModel) {
                                     NumberPicker(ctx).apply {
                                         minValue = 1
                                         maxValue = 99
-                                        value = previewTableCount
-                                        setOnValueChangedListener { _, _, newVal -> previewTableCount = newVal }
+                                        value = vm.tableCount.value
+                                        setOnValueChangedListener { _, _, newVal ->
+                                            vm.updateTableCount(context, newVal)
+                                        }
                                     }
                                 }
                             )
-                        }
-
-                        Spacer(Modifier.height(8.dp))
-                        Text(stringResource(R.string.current_table_count_format, appliedTableCount.toString()), style = MaterialTheme.typography.bodySmall)
-                        Spacer(Modifier.height(12.dp))
-
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                            Button(onClick = {
-                                appliedSort = previewSort
-                                appliedTableCount = previewTableCount
-                                vm.updateTableCount(context, appliedTableCount)
-                            }) {
-                                Text(stringResource(R.string.apply))
-                            }
                         }
                     }
                 }
             }
 
-            /** 전체 데이터 초기화 (기존 유지) */
+            /** -----------------------------
+             * 데이터 관리 섹션 (초기화)
+             * ----------------------------- */
             item {
                 var showResetDialog by remember { mutableStateOf(false) }
                 Card(
-                    modifier = Modifier.wrapContentSize().fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(MaterialTheme.colorScheme.errorContainer)
                 ) {
                     Column(Modifier.padding(16.dp)) {
                         Text(stringResource(R.string.system_management), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onErrorContainer)
                         Spacer(Modifier.height(8.dp))
-                        Text(stringResource(R.string.reset_warning), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onErrorContainer)
-                        Spacer(Modifier.height(12.dp))
                         Button(onClick = { showResetDialog = true }, colors = ButtonDefaults.buttonColors(MaterialTheme.colorScheme.error)) {
                             Text(stringResource(R.string.reset_all_data))
                         }
                     }
                 }
 
+                // 초기화 확인 다이얼로그
                 if (showResetDialog) {
                     AlertDialog(
                         onDismissRequest = { showResetDialog = false },

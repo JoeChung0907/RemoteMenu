@@ -21,7 +21,12 @@ import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.remotemenu.ui.*
 import com.remotemenu.ui.theme.RemoteMenuTheme
+import java.util.*
 
+/**
+ * MainActivity
+ * 앱의 진입점 및 권한 관리를 담당하는 액티비티.
+ */
 class MainActivity : ComponentActivity() {
 
     private val requestCode = 100
@@ -29,7 +34,6 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        // 안드로이드 10(API 29) 이하인 경우 런타임 권한 요청 없이 바로 실행
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
             Log.d("PermissionCheck", "Android 10 이하 기기이므로 권한 요청을 건너뜁니다.")
             launchApp()
@@ -38,19 +42,12 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    /** -----------------------------
-     * 필수 권한 요청 (Android 12 이상)
-     * ----------------------------- */
     private fun requestRequiredPermissions() {
         val permissions = mutableListOf<String>()
-
-        // Android 13+ 용 미디어/알림 권한
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             permissions += Manifest.permission.POST_NOTIFICATIONS
             permissions += Manifest.permission.READ_MEDIA_IMAGES
         }
-
-        // Android 12+ 용 블루투스 권한
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             permissions += Manifest.permission.BLUETOOTH_CONNECT
         }
@@ -73,37 +70,42 @@ class MainActivity : ComponentActivity() {
     ) {
         @Suppress("DEPRECATION")
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-
-        // 권한 결과와 상관없이 일단 실행 (필요한 기능 사용 시점에 다시 체크)
         launchApp()
     }
 
     private fun launchApp() {
         setContent {
+            val vm: MainViewModel = viewModel()
+            val language by vm.currentLanguage
+            
+            val context = LocalContext.current
+            val configuration = context.resources.configuration
+            val locale = Locale(language)
+            
+            if (configuration.locales[0] != locale) {
+                Locale.setDefault(locale)
+                configuration.setLocale(locale)
+                context.resources.updateConfiguration(configuration, context.resources.displayMetrics)
+            }
+
             RemoteMenuTheme {
-                RemoteMenuApp()
+                RemoteMenuApp(vm)
             }
         }
     }
 }
 
 @Composable
-fun RemoteMenuApp(vm: MainViewModel = viewModel()) {
+fun RemoteMenuApp(vm: MainViewModel) {
 
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
 
-    /** -----------------------------
-     * 앱 시작 시 1회 실행되는 초기화 블록
-     * ----------------------------- */
     LaunchedEffect(Unit) {
         vm.loadBluetoothPrinters(context)
         vm.initialize(context)
     }
 
-    /** -----------------------------
-     * 보조 저장 (생명주기 기반)
-     * ----------------------------- */
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_PAUSE || event == Lifecycle.Event.ON_STOP) {

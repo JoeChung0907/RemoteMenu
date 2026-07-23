@@ -16,7 +16,7 @@ import java.util.*
 
 /**
  * HistoryScreen
- * 주문 기록을 리스트 형태로 보여주는 화면.
+ * 과거 주문 내역을 리스트 형태로 보여주는 화면 컴포저블.
  */
 @Composable
 fun HistoryScreen(
@@ -25,6 +25,9 @@ fun HistoryScreen(
 ) {
     val formatter = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
 
+    /** -----------------------------
+     * 화면 레이아웃
+     * ----------------------------- */
     Column(modifier.padding(16.dp)) {
 
         Text(
@@ -32,12 +35,18 @@ fun HistoryScreen(
             style = MaterialTheme.typography.titleMedium
         )
 
+        /** -----------------------------
+         * 빈 내역 처리
+         * ----------------------------- */
         if (vm.orderHistory.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = androidx.compose.ui.Alignment.Center) {
                 Text(stringResource(R.string.history_empty))
             }
         }
 
+        /** -----------------------------
+         * 주문 기록 리스트 (LazyColumn)
+         * ----------------------------- */
         LazyColumn {
             items(vm.orderHistory) { item: OrderHistoryItem ->
                 Card(
@@ -46,8 +55,12 @@ fun HistoryScreen(
                         .padding(4.dp)
                 ) {
                     Column(Modifier.padding(8.dp)) {
+                        // 주문 시간 표시
                         Text(formatter.format(Date(item.timestamp)))
+                        
                         Spacer(Modifier.height(4.dp))
+                        
+                        // 주문 상세 텍스트 표시
                         Text(item.printedText)
                     }
                 }
