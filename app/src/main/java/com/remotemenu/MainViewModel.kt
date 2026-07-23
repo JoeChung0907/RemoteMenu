@@ -12,68 +12,50 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.remotemenu.model.*
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import java.util.*
+import kotlinx.coroutines.withContext
 
-/**
- * MainViewModel
- * 앱의 핵심 상태 관리 및 데이터 영속성을 담당하는 클래스.
- */
 class MainViewModel : ViewModel() {
 
     private val storage = StorageManager()
 
     /** -----------------------------
-     * UI 상태
+     * UI 상태 (안정성 및 성능 최적화)
      * ----------------------------- */
     val tableCount = mutableStateOf(1)
     val menuItems = mutableStateListOf<MenuItem>()
     val currentOrders = mutableStateListOf<OrderItem>()
     val orderHistory = mutableStateListOf<OrderHistoryItem>()
     val bluetoothPrinters = mutableStateListOf<BluetoothDevice>()
-    val selectedPrinter = mutableStateOf<BluetoothDevice?>(null)
+    val selectedPrinters = mutableStateListOf<BluetoothDevice>()
     val currentLanguage = mutableStateOf("ko")
 
-    /** -----------------------------
-     * 내부 ID 관리
-     * ----------------------------- */
     private var menuId = 1
     private var optionId = 1
     private var orderId = 1
     private var historyId = 1
 
-    /** -----------------------------
-     * 앱 초기화
-     * ----------------------------- */
     fun initialize(context: Context) {
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             val data = storage.loadAll(context)
+            withContext(Dispatchers.Main) {
+                if (data.isEmpty) {
+                    resetInternalState()
+                } else {
+                    menuItems.addAll(data.menus)
+                    tableCount.value = data.tableCount
+                    orderHistory.addAll(data.history)
+                    currentLanguage.value = data.language
 
-            if (data.isEmpty) {
-                resetInternalState()
-                return@launch
-            }
-
-            menuItems.clear()
-            menuItems.addAll(data.menus)
-            tableCount.value = data.tableCount
-            orderHistory.clear()
-            orderHistory.addAll(data.history)
-
-            menuId = (menuItems.maxOfOrNull { it.id } ?: 0) + 1
-            optionId = (menuItems.flatMap { it.customOptions }.maxOfOrNull { it.id } ?: 0) + 1
-            historyId = (orderHistory.maxOfOrNull { it.id } ?: 0) + 1
-            orderId = 1
-
-            val savedName = data.printerName
-            if (savedName != null) {
-                val hasPermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED
-                } else true
-
-                if (hasPermission) {
-                    val device = bluetoothPrinters.firstOrNull { it.name == savedName }
-                    selectedPrinter.value = device
+                    menuId = (menuItems.maxOfOrNull { it.id } ?: 0) + 1
+                    optionId = (menuItems.flatMap { it.customOptions }.maxOfOrNull { it.id } ?: 0) + 1
+                    historyId = (orderHistory.maxOfOrNull { it.id } ?: 0) + 1
+                    
+                    loadBluetoothPrinters(context) // 목록 로드 후 선택된 것 복원
+                    data.printerNames.forEach { name ->
+                        bluetoothPrinters.firstOrNull { it.name == name }?.let { selectedPrinters.add(it) }
+                    }
                 }
             }
         }
@@ -84,31 +66,24 @@ class MainViewModel : ViewModel() {
         menuItems.clear()
         currentOrders.clear()
         orderHistory.clear()
-        selectedPrinter.value = null
-        menuId = 1
-        optionId = 1
-        orderId = 1
-        historyId = 1
+        selectedPrinters.clear()
+        currentLanguage.value = "ko"
+        menuId = 1; optionId = 1; orderId = 1; historyId = 1
     }
 
-    /** -----------------------------
-     * 데이터 저장
-     * ----------------------------- */
     fun forceSave(context: Context) {
         val data = StorageManager.LoadedData(
             menus = menuItems.toList(),
             tableCount = tableCount.value,
             history = orderHistory.toList(),
-            printerName = selectedPrinter.value?.name
+            printerNames = selectedPrinters.mapNotNull { it.name },
+            language = currentLanguage.value
         )
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             storage.saveAll(context, data)
         }
     }
 
-    /** -----------------------------
-     * 메뉴 관리
-     * ----------------------------- */
     fun addMenu(context: Context, name: String, price: Int, allergy: String, options: List<String>) {
         val optionObjs = options.map { CustomOption(optionId++, it) }
         menuItems.add(MenuItem(menuId++, name, price, allergy, optionObjs))
@@ -120,109 +95,74 @@ class MainViewModel : ViewModel() {
         forceSave(context)
     }
 
-    /** -----------------------------
-     * 테이블 설정 관리
-     * ----------------------------- */
     fun updateTableCount(context: Context, count: Int) {
         tableCount.value = count
         forceSave(context)
     }
 
-    /** -----------------------------
-     * 주문 관리
-     * ----------------------------- */
     fun addOrder(table: Int, menu: MenuItem, qty: Int, opts: List<CustomOption>) {
-        currentOrders.add(
-            OrderItem(orderId++, table, menu, qty, opts, opts.isNotEmpty())
-        )
+        currentOrders.add(OrderItem(orderId++, table, menu, qty, opts, opts.isNotEmpty()))
     }
 
     fun removeOrder(order: OrderItem) {
         currentOrders.remove(order)
     }
 
-    /** -----------------------------
-     * 전체 데이터 초기화
-     * ----------------------------- */
     fun resetAllData(context: Context, onComplete: () -> Unit) {
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             storage.clearAll(context)
-            resetInternalState()
-            onComplete()
+            withContext(Dispatchers.Main) {
+                resetInternalState()
+                onComplete()
+            }
         }
     }
 
-    /** -----------------------------
-     * 주문 확정 (다국어 영수증 생성)
-     * ----------------------------- */
-    fun confirmOrders(context: Context, onPrint: (String) -> Unit) {
+    fun confirmOrders(context: Context, onPrint: suspend (String) -> Unit) {
         if (currentOrders.isEmpty()) return
-
         val sb = StringBuilder()
-        val time = System.currentTimeMillis()
-
         currentOrders.groupBy { it.tableNumber }.forEach { (table, list) ->
             sb.append(context.getString(R.string.receipt_table_prefix, table))
             list.forEach { o ->
                 sb.append(context.getString(R.string.receipt_menu, o.menuItem.name))
                 sb.append(context.getString(R.string.receipt_quantity, o.quantity))
-
                 if (o.selectedOptions.isNotEmpty()) {
                     sb.append(context.getString(R.string.receipt_options))
-                    o.selectedOptions.forEach { opt ->
-                        sb.append(" - ${opt.label}\n")
-                    }
+                    o.selectedOptions.forEach { opt -> sb.append(" - ${opt.label}\n") }
                 }
-
-                val itemTotal = o.menuItem.price * o.quantity
-                sb.append(context.getString(R.string.receipt_total, itemTotal))
+                sb.append(context.getString(R.string.receipt_total, o.menuItem.price * o.quantity))
                 sb.append(context.getString(R.string.receipt_divider))
             }
         }
-
         val text = sb.toString()
-        onPrint(text)
-
-        orderHistory.add(0, OrderHistoryItem(historyId++, time, text))
-        currentOrders.clear()
-        forceSave(context)
+        viewModelScope.launch {
+            onPrint(text)
+            orderHistory.add(0, OrderHistoryItem(historyId++, System.currentTimeMillis(), text))
+            currentOrders.clear()
+            forceSave(context)
+        }
     }
 
-    /** -----------------------------
-     * Bluetooth 프린터 목록 로드
-     * ----------------------------- */
     fun loadBluetoothPrinters(context: Context) {
         val manager = context.getSystemService(BluetoothManager::class.java)
         val adapter = manager?.adapter ?: return
-
         val hasPermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED
         } else true
-
         if (!hasPermission) return
-
-        val paired = try {
-            adapter.bondedDevices
-        } catch (_: SecurityException) {
-            emptySet()
-        }
-
+        val paired = try { adapter.bondedDevices } catch (_: SecurityException) { emptySet() }
         bluetoothPrinters.clear()
         bluetoothPrinters.addAll(paired)
     }
 
-    /** -----------------------------
-     * 프린터 선택
-     * ----------------------------- */
-    fun selectPrinter(context: Context, device: BluetoothDevice) {
-        selectedPrinter.value = device
+    fun togglePrinter(context: Context, device: BluetoothDevice) {
+        if (selectedPrinters.contains(device)) selectedPrinters.remove(device)
+        else selectedPrinters.add(device)
         forceSave(context)
     }
 
-    /** -----------------------------
-     * 언어 설정 변경
-     * ----------------------------- */
-    fun setLanguage(lang: String) {
+    fun setLanguage(context: Context, lang: String) {
         currentLanguage.value = lang
+        forceSave(context)
     }
 }

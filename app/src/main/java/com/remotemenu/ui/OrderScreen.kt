@@ -109,7 +109,6 @@ fun OrderScreen(
 
             Spacer(Modifier.height(8.dp))
 
-            // 커스텀 옵션 선택
             if (menu.customOptions.isNotEmpty()) {
                 Text(stringResource(R.string.custom_options))
 
@@ -129,7 +128,6 @@ fun OrderScreen(
 
             Spacer(Modifier.height(8.dp))
 
-            // 주문 추가 버튼
             Button(
                 onClick = {
                     val q = qty.toIntOrNull() ?: 1
@@ -176,20 +174,22 @@ fun OrderScreen(
         Spacer(Modifier.height(16.dp))
 
         /** -----------------------------
-         * 최종 주문 확정 및 프린트 실행
+         * 최종 주문 확정 및 다중 프린트 실행
          * ----------------------------- */
         Button(
             onClick = {
-                val printer = vm.selectedPrinter.value
-
-                if (printer != null) {
+                if (vm.selectedPrinters.isNotEmpty()) {
                     vm.confirmOrders(context) { text ->
                         val bp = BluetoothPrinter(context)
-                        bp.printToDevice(printer, text)
+                        // suspend lambda 내에서는 for-loop을 사용하여 순차적으로 suspend 함수 호출 가능
+                        for (printer in vm.selectedPrinters) {
+                            bp.printToDevice(printer, text)
+                        }
                     }
                 }
             },
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
+            enabled = vm.selectedPrinters.isNotEmpty()
         ) {
             Text(stringResource(R.string.confirm_order_and_print))
         }

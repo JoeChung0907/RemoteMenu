@@ -5,27 +5,27 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.widget.NumberPicker
 import android.widget.Toast
-import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.viewinterop.AndroidView
-import com.remotemenu.MainViewModel
 import androidx.compose.ui.Alignment
-import androidx.compose.material3.AssistChip
-import androidx.compose.foundation.clickable
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import com.remotemenu.MainViewModel
 import com.remotemenu.R
 import com.remotemenu.bluetooth.BluetoothPrinter
+import kotlinx.coroutines.launch
 
 /**
  * SettingsScreen
@@ -35,11 +35,11 @@ import com.remotemenu.bluetooth.BluetoothPrinter
 fun SettingsScreen(modifier: Modifier = Modifier, vm: MainViewModel) {
 
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
 
     /** -----------------------------
      * UI 상태 및 리소스 변수
      * ----------------------------- */
-    var appliedFontScale by remember { mutableFloatStateOf(1.0f) }
     val testPrintText = stringResource(R.string.test_print_text)
     val resetCompleteText = stringResource(R.string.reset_complete)
 
@@ -80,15 +80,12 @@ fun SettingsScreen(modifier: Modifier = Modifier, vm: MainViewModel) {
                         ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED
                     } else true
 
-                    val printerName = if (hasPermission) {
-                        vm.selectedPrinter.value?.name ?: stringResource(R.string.printer_not_connected)
-                    } else stringResource(R.string.printer_not_connected)
-
                     // 현재 연결 상태 표시
-                    val statusText = if (vm.selectedPrinter.value == null) {
+                    val selectedCount = vm.selectedPrinters.size
+                    val statusText = if (selectedCount == 0) {
                         stringResource(R.string.printer_not_connected)
                     } else {
-                        "${stringResource(R.string.printer_management)}: $printerName"
+                        "${stringResource(R.string.printer_management)} ($selectedCount)"
                     }
 
                     Text(statusText, style = MaterialTheme.typography.bodyMedium)
@@ -97,20 +94,29 @@ fun SettingsScreen(modifier: Modifier = Modifier, vm: MainViewModel) {
 
                     // 페어링된 블루투스 기기 목록
                     vm.bluetoothPrinters.forEach { device ->
+                        val isSelected = vm.selectedPrinters.contains(device)
                         val deviceName = try {
                             if (hasPermission) device.name ?: device.address else device.address
                         } catch (_: SecurityException) {
                             device.address
                         }
                         
-                        Text(
-                            text = deviceName,
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable { vm.selectPrinter(context, device) }
-                                .padding(vertical = 4.dp),
-                            style = MaterialTheme.typography.bodySmall
-                        )
+                                .clickable { vm.togglePrinter(context, device) }
+                                .padding(vertical = 4.dp)
+                        ) {
+                            Checkbox(
+                                checked = isSelected,
+                                onCheckedChange = { vm.togglePrinter(context, device) }
+                            )
+                            Text(
+                                text = deviceName,
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
                     }
 
                     Spacer(Modifier.height(8.dp))
@@ -118,12 +124,15 @@ fun SettingsScreen(modifier: Modifier = Modifier, vm: MainViewModel) {
                     // 테스트 인쇄 버튼
                     Button(
                         onClick = {
-                            val printer = vm.selectedPrinter.value
-                            if (printer != null) {
-                                BluetoothPrinter(context).printToDevice(printer, testPrintText)
+                            scope.launch {
+                                val bp = BluetoothPrinter(context)
+                                vm.selectedPrinters.forEach { printer ->
+                                    bp.printToDevice(printer, testPrintText)
+                                }
                             }
                         },
-                        modifier = Modifier.align(Alignment.End)
+                        modifier = Modifier.align(Alignment.End),
+                        enabled = vm.selectedPrinters.isNotEmpty()
                     ) {
                         Text(stringResource(R.string.print_test_order))
                     }
@@ -152,7 +161,9 @@ fun SettingsScreen(modifier: Modifier = Modifier, vm: MainViewModel) {
                                     Text(item.name, style = MaterialTheme.typography.bodyMedium)
                                     Text("£${item.price}", style = MaterialTheme.typography.bodySmall)
                                 }
-                                Button(onClick = { vm.removeMenu(context, item) }) { Text(stringResource(R.string.delete)) }
+                                IconButton(onClick = { vm.removeMenu(context, item) }) { 
+                                    Icon(Icons.Default.Delete, contentDescription = null) 
+                                }
                             }
                         }
                     }
@@ -183,35 +194,30 @@ fun SettingsScreen(modifier: Modifier = Modifier, vm: MainViewModel) {
                         var name by remember { mutableStateOf("") }
                         var price by remember { mutableStateOf("") }
                         var allergy by remember { mutableStateOf("") }
-                        var optionText by remember { mutableStateOf("") }
                         val options = remember { mutableStateListOf<String>() }
 
                         OutlinedTextField(
                             value = name,
                             onValueChange = { name = it },
                             label = { Text(stringResource(R.string.menu_name)) },
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true
                         )
 
                         OutlinedTextField(
                             value = price,
                             onValueChange = { price = it.filter(Char::isDigit) },
                             label = { Text(stringResource(R.string.price_currency)) },
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true
                         )
 
-                        // 알러지 목록 정의
                         val allergyItems = listOf(
-                            stringResource(R.string.allergy_milk),
-                            stringResource(R.string.allergy_egg),
-                            stringResource(R.string.allergy_peanut),
-                            stringResource(R.string.allergy_soy),
-                            stringResource(R.string.allergy_wheat),
-                            stringResource(R.string.allergy_crustacean),
-                            stringResource(R.string.allergy_fish),
-                            stringResource(R.string.allergy_nut),
-                            stringResource(R.string.allergy_sesame)
-                        )
+                            R.string.allergy_milk, R.string.allergy_egg, R.string.allergy_peanut,
+                            R.string.allergy_soy, R.string.allergy_wheat, R.string.allergy_crustacean,
+                            R.string.allergy_fish, R.string.allergy_nut, R.string.allergy_sesame
+                        ).map { stringResource(it) }
+
                         var showAllergyDialog by remember { mutableStateOf(false) }
                         val selectedAllergies = remember { mutableStateListOf<String>() }
 
@@ -220,11 +226,15 @@ fun SettingsScreen(modifier: Modifier = Modifier, vm: MainViewModel) {
                                 value = allergy,
                                 onValueChange = {},
                                 label = { Text(stringResource(R.string.allergy_info)) },
-                                modifier = Modifier.weight(1f),
-                                readOnly = true
+                                modifier = Modifier.weight(1f).clickable { showAllergyDialog = true },
+                                readOnly = true,
+                                enabled = false,
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    disabledTextColor = MaterialTheme.colorScheme.onSurface,
+                                    disabledBorderColor = MaterialTheme.colorScheme.outline,
+                                    disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
                             )
-                            Spacer(Modifier.width(8.dp))
-                            Button(onClick = { showAllergyDialog = true }) { Text(stringResource(R.string.select)) }
                         }
 
                         // 알러지 선택 다이얼로그
@@ -248,10 +258,7 @@ fun SettingsScreen(modifier: Modifier = Modifier, vm: MainViewModel) {
                                             ) {
                                                 Checkbox(
                                                     checked = selectedAllergies.contains(item),
-                                                    onCheckedChange = { checked ->
-                                                        if (checked) selectedAllergies.add(item)
-                                                        else selectedAllergies.remove(item)
-                                                    }
+                                                    onCheckedChange = null
                                                 )
                                                 Text(item)
                                             }
@@ -268,27 +275,6 @@ fun SettingsScreen(modifier: Modifier = Modifier, vm: MainViewModel) {
                                     TextButton(onClick = { showAllergyDialog = false }) { Text(stringResource(R.string.cancel)) }
                                 }
                             )
-                        }
-
-                        // 옵션 추가
-                        Row {
-                            OutlinedTextField(
-                                value = optionText,
-                                onValueChange = { optionText = it },
-                                label = { Text(stringResource(R.string.add_option)) },
-                                modifier = Modifier.weight(1f)
-                            )
-                            Spacer(Modifier.width(8.dp))
-                            Button(onClick = {
-                                if (optionText.isNotBlank()) {
-                                    options.add(optionText)
-                                    optionText = ""
-                                }
-                            }) { Text(stringResource(R.string.add)) }
-                        }
-
-                        if (options.isNotEmpty()) {
-                            Text(stringResource(R.string.options_prefix, options.joinToString()), style = MaterialTheme.typography.bodySmall)
                         }
 
                         // 메뉴 저장 버튼
@@ -320,34 +306,25 @@ fun SettingsScreen(modifier: Modifier = Modifier, vm: MainViewModel) {
                         // 언어 설정 전환
                         Text(stringResource(R.string.language_settings), style = MaterialTheme.typography.bodySmall)
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            AssistChip(
-                                onClick = { vm.setLanguage("ko") },
-                                label = { Text(stringResource(R.string.lang_ko)) },
-                                colors = AssistChipDefaults.assistChipColors(
-                                    containerColor = if (vm.currentLanguage.value == "ko") MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface
+                            listOf("ko" to R.string.lang_ko, "en" to R.string.lang_en).forEach { (code, res) ->
+                                FilterChip(
+                                    selected = vm.currentLanguage.value == code,
+                                    onClick = { vm.setLanguage(context, code) },
+                                    label = { Text(stringResource(res)) }
                                 )
-                            )
-                            AssistChip(
-                                onClick = { vm.setLanguage("en") },
-                                label = { Text(stringResource(R.string.lang_en)) },
-                                colors = AssistChipDefaults.assistChipColors(
-                                    containerColor = if (vm.currentLanguage.value == "en") MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface
-                                )
-                            )
+                            }
                         }
 
                         Spacer(Modifier.height(16.dp))
 
-                        // 테이블 개수 설정 (NumberPicker)
+                        // 테이블 개수 설정
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(stringResource(R.string.table_count))
                             Spacer(Modifier.width(12.dp))
                             AndroidView(
                                 factory = { ctx ->
                                     NumberPicker(ctx).apply {
-                                        minValue = 1
-                                        maxValue = 99
-                                        value = vm.tableCount.value
+                                        minValue = 1; maxValue = 99; value = vm.tableCount.value
                                         setOnValueChangedListener { _, _, newVal ->
                                             vm.updateTableCount(context, newVal)
                                         }
@@ -364,20 +341,14 @@ fun SettingsScreen(modifier: Modifier = Modifier, vm: MainViewModel) {
              * ----------------------------- */
             item {
                 var showResetDialog by remember { mutableStateOf(false) }
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(MaterialTheme.colorScheme.errorContainer)
+                Button(
+                    onClick = { showResetDialog = true },
+                    colors = ButtonDefaults.buttonColors(MaterialTheme.colorScheme.error),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column(Modifier.padding(16.dp)) {
-                        Text(stringResource(R.string.system_management), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onErrorContainer)
-                        Spacer(Modifier.height(8.dp))
-                        Button(onClick = { showResetDialog = true }, colors = ButtonDefaults.buttonColors(MaterialTheme.colorScheme.error)) {
-                            Text(stringResource(R.string.reset_all_data))
-                        }
-                    }
+                    Text(stringResource(R.string.reset_all_data))
                 }
 
-                // 초기화 확인 다이얼로그
                 if (showResetDialog) {
                     AlertDialog(
                         onDismissRequest = { showResetDialog = false },
