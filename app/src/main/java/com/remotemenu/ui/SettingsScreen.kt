@@ -321,14 +321,14 @@ fun SettingsScreen(modifier: Modifier = Modifier, vm: MainViewModel) {
                         Text(stringResource(R.string.language_settings), style = MaterialTheme.typography.bodySmall)
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             AssistChip(
-                                onClick = { vm.setLanguage("ko") },
+                                onClick = { vm.setLanguage(context, "ko") },
                                 label = { Text(stringResource(R.string.lang_ko)) },
                                 colors = AssistChipDefaults.assistChipColors(
                                     containerColor = if (vm.currentLanguage.value == "ko") MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface
                                 )
                             )
                             AssistChip(
-                                onClick = { vm.setLanguage("en") },
+                                onClick = { vm.setLanguage(context, "en") },
                                 label = { Text(stringResource(R.string.lang_en)) },
                                 colors = AssistChipDefaults.assistChipColors(
                                     containerColor = if (vm.currentLanguage.value == "en") MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface

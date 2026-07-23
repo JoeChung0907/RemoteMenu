@@ -54,17 +54,21 @@ class MainViewModel : ViewModel() {
                 return@launch
             }
 
+            // 데이터 복원
             menuItems.clear()
             menuItems.addAll(data.menus)
             tableCount.value = data.tableCount
             orderHistory.clear()
             orderHistory.addAll(data.history)
+            currentLanguage.value = data.language
 
+            // ID 동기화
             menuId = (menuItems.maxOfOrNull { it.id } ?: 0) + 1
             optionId = (menuItems.flatMap { it.customOptions }.maxOfOrNull { it.id } ?: 0) + 1
             historyId = (orderHistory.maxOfOrNull { it.id } ?: 0) + 1
             orderId = 1
 
+            // 저장된 프린터 복원
             val savedName = data.printerName
             if (savedName != null) {
                 val hasPermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -85,6 +89,7 @@ class MainViewModel : ViewModel() {
         currentOrders.clear()
         orderHistory.clear()
         selectedPrinter.value = null
+        currentLanguage.value = "ko"
         menuId = 1
         optionId = 1
         orderId = 1
@@ -99,7 +104,8 @@ class MainViewModel : ViewModel() {
             menus = menuItems.toList(),
             tableCount = tableCount.value,
             history = orderHistory.toList(),
-            printerName = selectedPrinter.value?.name
+            printerName = selectedPrinter.value?.name,
+            language = currentLanguage.value
         )
         viewModelScope.launch {
             storage.saveAll(context, data)
@@ -222,7 +228,8 @@ class MainViewModel : ViewModel() {
     /** -----------------------------
      * 언어 설정 변경
      * ----------------------------- */
-    fun setLanguage(lang: String) {
+    fun setLanguage(context: Context, lang: String) {
         currentLanguage.value = lang
+        forceSave(context)
     }
 }

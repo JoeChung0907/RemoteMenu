@@ -2,6 +2,7 @@ package com.remotemenu
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
@@ -16,6 +17,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -25,7 +27,7 @@ import java.util.*
 
 /**
  * MainActivity
- * 앱의 진입점 및 권한 관리를 담당하는 액티비티.
+ * 앱의 진입점 및 실시간 언어 설정을 관리하는 액티비티.
  */
 class MainActivity : ComponentActivity() {
 
@@ -35,7 +37,6 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
-            Log.d("PermissionCheck", "Android 10 이하 기기이므로 권한 요청을 건너뜁니다.")
             launchApp()
         } else {
             requestRequiredPermissions()
@@ -78,18 +79,26 @@ class MainActivity : ComponentActivity() {
             val vm: MainViewModel = viewModel()
             val language by vm.currentLanguage
             
+            /** -----------------------------
+             * 실시간 언어 변경 엔진
+             * ----------------------------- */
             val context = LocalContext.current
-            val configuration = context.resources.configuration
-            val locale = Locale(language)
-            
-            if (configuration.locales[0] != locale) {
-                Locale.setDefault(locale)
-                configuration.setLocale(locale)
-                context.resources.updateConfiguration(configuration, context.resources.displayMetrics)
+            val configuration = remember(language) {
+                Configuration(context.resources.configuration).apply {
+                    val locale = Locale(language)
+                    Locale.setDefault(locale)
+                    setLocale(locale)
+                }
             }
-
-            RemoteMenuTheme {
-                RemoteMenuApp(vm)
+            
+            // 새 Configuration을 하위 모든 컴포저블에 강제 주입
+            CompositionLocalProvider(
+                LocalConfiguration provides configuration,
+                LocalContext provides context.createConfigurationContext(configuration)
+            ) {
+                RemoteMenuTheme {
+                    RemoteMenuApp(vm)
+                }
             }
         }
     }
