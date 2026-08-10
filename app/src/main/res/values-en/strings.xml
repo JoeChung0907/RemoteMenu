@@ -13,7 +13,8 @@
 <string name="printer_not_connected">None</string>
 <string name="paired_printers">Paired Devices</string>
 <string name="no_printers_found">No devices found</string>
-<string name="print_test_order">Print Test</string>
+<string name="test_print_button">Test Print</string>
+<string name="print_test_order">Print Order</string>
 <string name="test_print_text">This is a test print.</string>
 
 <!-- Add Menu -->
@@ -28,6 +29,13 @@
 <string name="save_menu">Save Menu</string>
 <string name="delete">Delete</string>
 <string name="menu_list">Menu List</string>
+
+<!-- Bulk Import -->
+<string name="bulk_import">Bulk Import Menu</string>
+<string name="import_json_hint">Paste menu JSON code here</string>
+<string name="import_button">Import</string>
+<string name="import_error">Invalid format.</string>
+<string name="import_success">%1$d menus imported.</string>
 
 <!-- Settings -->
 <string name="menu_settings">Settings</string>

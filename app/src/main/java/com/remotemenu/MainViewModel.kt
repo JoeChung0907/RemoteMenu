@@ -11,17 +11,25 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 import com.remotemenu.model.*
+import com.remotemenu.bluetooth.BluetoothPrinter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+/**
+ * MainViewModel
+ * 앱의 핵심 상태 관리 및 데이터 영속성을 담당하는 클래스.
+ */
 class MainViewModel : ViewModel() {
 
     private val storage = StorageManager()
+    private val gson = Gson()
 
     /** -----------------------------
-     * UI 상태 (안정성 및 성능 최적화)
+     * UI 상태
      * ----------------------------- */
     val tableCount = mutableStateOf(1)
     val menuItems = mutableStateListOf<MenuItem>()
@@ -36,6 +44,9 @@ class MainViewModel : ViewModel() {
     private var orderId = 1
     private var historyId = 1
 
+    /** -----------------------------
+     * 앱 초기화
+     * ----------------------------- */
     fun initialize(context: Context) {
         viewModelScope.launch(Dispatchers.IO) {
             val data = storage.loadAll(context)
@@ -43,22 +54,31 @@ class MainViewModel : ViewModel() {
                 if (data.isEmpty) {
                     resetInternalState()
                 } else {
+                    menuItems.clear()
                     menuItems.addAll(data.menus)
                     tableCount.value = data.tableCount
+                    orderHistory.clear()
                     orderHistory.addAll(data.history)
                     currentLanguage.value = data.language
 
-                    menuId = (menuItems.maxOfOrNull { it.id } ?: 0) + 1
-                    optionId = (menuItems.flatMap { it.customOptions }.maxOfOrNull { it.id } ?: 0) + 1
-                    historyId = (orderHistory.maxOfOrNull { it.id } ?: 0) + 1
+                    updateInternalIds()
                     
-                    loadBluetoothPrinters(context) // 목록 로드 후 선택된 것 복원
+                    loadBluetoothPrinters(context)
+                    selectedPrinters.clear()
                     data.printerNames.forEach { name ->
-                        bluetoothPrinters.firstOrNull { it.name == name }?.let { selectedPrinters.add(it) }
+                        bluetoothPrinters.firstOrNull { 
+                            try { it.name == name } catch (_: SecurityException) { false }
+                        }?.let { selectedPrinters.add(it) }
                     }
                 }
             }
         }
+    }
+
+    private fun updateInternalIds() {
+        menuId = (menuItems.maxOfOrNull { it.id } ?: 0) + 1
+        optionId = (menuItems.flatMap { it.customOptions }.maxOfOrNull { it.id } ?: 0) + 1
+        historyId = (orderHistory.maxOfOrNull { it.id } ?: 0) + 1
     }
 
     private fun resetInternalState() {
@@ -71,12 +91,17 @@ class MainViewModel : ViewModel() {
         menuId = 1; optionId = 1; orderId = 1; historyId = 1
     }
 
+    /** -----------------------------
+     * 데이터 저장
+     * ----------------------------- */
     fun forceSave(context: Context) {
         val data = StorageManager.LoadedData(
             menus = menuItems.toList(),
             tableCount = tableCount.value,
             history = orderHistory.toList(),
-            printerNames = selectedPrinters.mapNotNull { it.name },
+            printerNames = selectedPrinters.mapNotNull { 
+                try { it.name } catch (_: SecurityException) { it.address }
+            },
             language = currentLanguage.value
         )
         viewModelScope.launch(Dispatchers.IO) {
@@ -84,10 +109,38 @@ class MainViewModel : ViewModel() {
         }
     }
 
+    /** -----------------------------
+     * 메뉴 관리 및 일괄 가져오기
+     * ----------------------------- */
     fun addMenu(context: Context, name: String, price: Int, allergy: String, options: List<String>) {
         val optionObjs = options.map { CustomOption(optionId++, it) }
         menuItems.add(MenuItem(menuId++, name, price, allergy, optionObjs))
         forceSave(context)
+    }
+
+    fun importMenus(context: Context, json: String): Int {
+        return try {
+            val type = object : TypeToken<List<Map<String, Any>>>() {}.type
+            val data: List<Map<String, Any>> = gson.fromJson(json, type)
+            var count = 0
+            
+            data.forEach { item ->
+                val name = item["name"] as? String ?: ""
+                val price = (item["price"] as? Double)?.toInt() ?: 0
+                val allergy = item["allergy"] as? String ?: ""
+                val options = (item["options"] as? List<*>)?.mapNotNull { it as? String } ?: emptyList()
+                
+                if (name.isNotEmpty()) {
+                    val optionObjs = options.map { CustomOption(optionId++, it) }
+                    menuItems.add(MenuItem(menuId++, name, price, allergy, optionObjs))
+                    count++
+                }
+            }
+            forceSave(context)
+            count
+        } catch (_: Exception) {
+            -1
+        }
     }
 
     fun removeMenu(context: Context, item: MenuItem) {
@@ -95,6 +148,9 @@ class MainViewModel : ViewModel() {
         forceSave(context)
     }
 
+    /** -----------------------------
+     * 기타 관리 기능
+     * ----------------------------- */
     fun updateTableCount(context: Context, count: Int) {
         tableCount.value = count
         forceSave(context)
@@ -118,11 +174,15 @@ class MainViewModel : ViewModel() {
         }
     }
 
-    fun confirmOrders(context: Context, onPrint: suspend (String) -> Unit) {
-        if (currentOrders.isEmpty()) return
+    /** -----------------------------
+     * 주문서 텍스트 생성
+     * ----------------------------- */
+    fun generateOrderText(context: Context): String {
+        if (currentOrders.isEmpty()) return ""
         val sb = StringBuilder()
         currentOrders.groupBy { it.tableNumber }.forEach { (table, list) ->
             sb.append(context.getString(R.string.receipt_table_prefix, table))
+            sb.append("\n")
             list.forEach { o ->
                 sb.append(context.getString(R.string.receipt_menu, o.menuItem.name))
                 sb.append(context.getString(R.string.receipt_quantity, o.quantity))
@@ -134,15 +194,49 @@ class MainViewModel : ViewModel() {
                 sb.append(context.getString(R.string.receipt_divider))
             }
         }
-        val text = sb.toString()
+        return sb.toString()
+    }
+
+    /** -----------------------------
+     * 주문 확정 및 다중 프린트
+     * ----------------------------- */
+    fun confirmOrders(context: Context) {
+        val text = generateOrderText(context)
+        if (text.isEmpty()) return
+        
         viewModelScope.launch {
-            onPrint(text)
+            // 1. 인쇄 수행 (IO 쓰레드에서 병렬 처리됨)
+            val bp = BluetoothPrinter(context)
+            for (printer in selectedPrinters) {
+                bp.printToDevice(printer, text)
+            }
+            
+            // 2. 기록 저장 및 상태 초기화
             orderHistory.add(0, OrderHistoryItem(historyId++, System.currentTimeMillis(), text))
             currentOrders.clear()
             forceSave(context)
         }
     }
 
+    /** -----------------------------
+     * 테스트 인쇄 전용
+     * ----------------------------- */
+    fun printTest(context: Context) {
+        viewModelScope.launch {
+            val orderText = generateOrderText(context)
+            val testText = context.getString(R.string.test_print_text)
+            val finalText = if (orderText.isEmpty()) testText else "$orderText\n$testText"
+            
+            val bp = BluetoothPrinter(context)
+            for (printer in selectedPrinters) {
+                bp.printToDevice(printer, finalText)
+            }
+        }
+    }
+
+    /** -----------------------------
+     * Bluetooth 관리
+     * ----------------------------- */
     fun loadBluetoothPrinters(context: Context) {
         val manager = context.getSystemService(BluetoothManager::class.java)
         val adapter = manager?.adapter ?: return

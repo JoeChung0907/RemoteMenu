@@ -24,8 +24,6 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import com.remotemenu.MainViewModel
 import com.remotemenu.R
-import com.remotemenu.bluetooth.BluetoothPrinter
-import kotlinx.coroutines.launch
 
 /**
  * SettingsScreen
@@ -35,13 +33,15 @@ import kotlinx.coroutines.launch
 fun SettingsScreen(modifier: Modifier = Modifier, vm: MainViewModel) {
 
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
 
     /** -----------------------------
      * UI 상태 및 리소스 변수
      * ----------------------------- */
-    val testPrintText = stringResource(R.string.test_print_text)
     val resetCompleteText = stringResource(R.string.reset_complete)
+    val importSuccessText = stringResource(R.string.import_success)
+    val importErrorText = stringResource(R.string.import_error)
+    
+    var showPrintConfirmDialog by remember { mutableStateOf(false) }
 
     Row(
         modifier = modifier
@@ -75,24 +75,21 @@ fun SettingsScreen(modifier: Modifier = Modifier, vm: MainViewModel) {
                         vm.loadBluetoothPrinters(context)
                     }
 
-                    // 블루투스 권한 확인 (버전별 분기)
                     val hasPermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                         ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED
                     } else true
 
-                    // 현재 연결 상태 표시
                     val selectedCount = vm.selectedPrinters.size
                     val statusText = if (selectedCount == 0) {
                         stringResource(R.string.printer_not_connected)
                     } else {
-                        "${stringResource(R.string.printer_management)} ($selectedCount)"
+                        "${stringResource(R.string.printer_management)}: $selectedCount"
                     }
 
                     Text(statusText, style = MaterialTheme.typography.bodyMedium)
                     
                     Spacer(Modifier.height(12.dp))
 
-                    // 페어링된 블루투스 기기 목록
                     vm.bluetoothPrinters.forEach { device ->
                         val isSelected = vm.selectedPrinters.contains(device)
                         val deviceName = try {
@@ -121,20 +118,29 @@ fun SettingsScreen(modifier: Modifier = Modifier, vm: MainViewModel) {
 
                     Spacer(Modifier.height(8.dp))
 
-                    // 테스트 인쇄 버튼
                     Button(
-                        onClick = {
-                            scope.launch {
-                                val bp = BluetoothPrinter(context)
-                                vm.selectedPrinters.forEach { printer ->
-                                    bp.printToDevice(printer, testPrintText)
-                                }
-                            }
-                        },
+                        onClick = { showPrintConfirmDialog = true },
                         modifier = Modifier.align(Alignment.End),
                         enabled = vm.selectedPrinters.isNotEmpty()
                     ) {
-                        Text(stringResource(R.string.print_test_order))
+                        Text(stringResource(R.string.test_print_button))
+                    }
+
+                    if (showPrintConfirmDialog) {
+                        AlertDialog(
+                            onDismissRequest = { showPrintConfirmDialog = false },
+                            title = { Text(stringResource(R.string.test_print_button)) },
+                            text = { Text(stringResource(R.string.confirm)) },
+                            confirmButton = {
+                                TextButton(onClick = {
+                                    vm.printTest(context)
+                                    showPrintConfirmDialog = false
+                                }) { Text(stringResource(R.string.confirm)) }
+                            },
+                            dismissButton = {
+                                TextButton(onClick = { showPrintConfirmDialog = false }) { Text(stringResource(R.string.cancel)) }
+                            }
+                        )
                     }
                 }
             }
@@ -159,7 +165,7 @@ fun SettingsScreen(modifier: Modifier = Modifier, vm: MainViewModel) {
                             ) {
                                 Column(Modifier.weight(1f)) {
                                     Text(item.name, style = MaterialTheme.typography.bodyMedium)
-                                    Text("£${item.price}", style = MaterialTheme.typography.bodySmall)
+                                    Text(stringResource(R.string.price_format, item.price), style = MaterialTheme.typography.bodySmall)
                                 }
                                 IconButton(onClick = { vm.removeMenu(context, item) }) { 
                                     Icon(Icons.Default.Delete, contentDescription = null) 
@@ -172,7 +178,7 @@ fun SettingsScreen(modifier: Modifier = Modifier, vm: MainViewModel) {
         }
 
         /** -----------------------------
-         * 우측 패널 (메뉴 추가 + 앱 설정)
+         * 우측 패널 (메뉴 추가 + 일괄 가져오기 + 앱 설정)
          * ----------------------------- */
         LazyColumn(
             modifier = Modifier
@@ -194,6 +200,7 @@ fun SettingsScreen(modifier: Modifier = Modifier, vm: MainViewModel) {
                         var name by remember { mutableStateOf("") }
                         var price by remember { mutableStateOf("") }
                         var allergy by remember { mutableStateOf("") }
+                        var optionText by remember { mutableStateOf("") }
                         val options = remember { mutableStateListOf<String>() }
 
                         OutlinedTextField(
@@ -219,7 +226,6 @@ fun SettingsScreen(modifier: Modifier = Modifier, vm: MainViewModel) {
                         ).map { stringResource(it) }
 
                         var showAllergyDialog by remember { mutableStateOf(false) }
-                        val selectedAllergies = remember { mutableStateListOf<String>() }
 
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             OutlinedTextField(
@@ -237,8 +243,8 @@ fun SettingsScreen(modifier: Modifier = Modifier, vm: MainViewModel) {
                             )
                         }
 
-                        // 알러지 선택 다이얼로그
                         if (showAllergyDialog) {
+                            val selected = remember { mutableStateListOf<String>().apply { if (allergy.isNotEmpty()) addAll(allergy.split(", ")) } }
                             AlertDialog(
                                 onDismissRequest = { showAllergyDialog = false },
                                 title = { Text(stringResource(R.string.allergy_selection)) },
@@ -252,12 +258,12 @@ fun SettingsScreen(modifier: Modifier = Modifier, vm: MainViewModel) {
                                             Row(
                                                 verticalAlignment = Alignment.CenterVertically,
                                                 modifier = Modifier.fillMaxWidth().clickable {
-                                                    if (selectedAllergies.contains(item)) selectedAllergies.remove(item)
-                                                    else selectedAllergies.add(item)
+                                                    if (selected.contains(item)) selected.remove(item)
+                                                    else selected.add(item)
                                                 }
                                             ) {
                                                 Checkbox(
-                                                    checked = selectedAllergies.contains(item),
+                                                    checked = selected.contains(item),
                                                     onCheckedChange = null
                                                 )
                                                 Text(item)
@@ -267,17 +273,35 @@ fun SettingsScreen(modifier: Modifier = Modifier, vm: MainViewModel) {
                                 },
                                 confirmButton = {
                                     TextButton(onClick = {
-                                        allergy = selectedAllergies.joinToString(", ")
+                                        allergy = selected.joinToString(", ")
                                         showAllergyDialog = false
                                     }) { Text(stringResource(R.string.confirm)) }
-                                },
-                                dismissButton = {
-                                    TextButton(onClick = { showAllergyDialog = false }) { Text(stringResource(R.string.cancel)) }
                                 }
                             )
                         }
 
-                        // 메뉴 저장 버튼
+                        // 옵션 추가 UI
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            OutlinedTextField(
+                                value = optionText,
+                                onValueChange = { optionText = it },
+                                label = { Text(stringResource(R.string.add_option)) },
+                                modifier = Modifier.weight(1f),
+                                singleLine = true
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Button(onClick = {
+                                if (optionText.isNotBlank()) {
+                                    options.add(optionText)
+                                    optionText = ""
+                                }
+                            }) { Text(stringResource(R.string.add)) }
+                        }
+
+                        if (options.isNotEmpty()) {
+                            Text(stringResource(R.string.options_prefix, options.joinToString()), style = MaterialTheme.typography.bodySmall)
+                        }
+
                         Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
                             Button(onClick = {
                                 val p = price.toIntOrNull()
@@ -286,6 +310,45 @@ fun SettingsScreen(modifier: Modifier = Modifier, vm: MainViewModel) {
                                     name = ""; price = ""; allergy = ""; options.clear()
                                 }
                             }) { Text(stringResource(R.string.save_menu)) }
+                        }
+                    }
+                }
+            }
+
+            /** -----------------------------
+             * 메뉴 일괄 가져오기 섹션
+             * ----------------------------- */
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(MaterialTheme.colorScheme.secondaryContainer)
+                ) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(stringResource(R.string.bulk_import), style = MaterialTheme.typography.titleMedium)
+                        
+                        var jsonText by remember { mutableStateOf("") }
+                        
+                        OutlinedTextField(
+                            value = jsonText,
+                            onValueChange = { jsonText = it },
+                            label = { Text(stringResource(R.string.import_json_hint)) },
+                            modifier = Modifier.fillMaxWidth().height(150.dp),
+                            textStyle = MaterialTheme.typography.bodySmall
+                        )
+                        
+                        Button(
+                            onClick = {
+                                val count = vm.importMenus(context, jsonText)
+                                if (count >= 0) {
+                                    Toast.makeText(context, importSuccessText.format(count), Toast.LENGTH_SHORT).show()
+                                    jsonText = ""
+                                } else {
+                                    Toast.makeText(context, importErrorText, Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            modifier = Modifier.align(Alignment.End)
+                        ) {
+                            Text(stringResource(R.string.import_button))
                         }
                     }
                 }
@@ -303,7 +366,6 @@ fun SettingsScreen(modifier: Modifier = Modifier, vm: MainViewModel) {
                         Text(stringResource(R.string.menu_settings), style = MaterialTheme.typography.titleMedium)
                         Spacer(Modifier.height(12.dp))
 
-                        // 언어 설정 전환
                         Text(stringResource(R.string.language_settings), style = MaterialTheme.typography.bodySmall)
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             listOf("ko" to R.string.lang_ko, "en" to R.string.lang_en).forEach { (code, res) ->
@@ -317,7 +379,6 @@ fun SettingsScreen(modifier: Modifier = Modifier, vm: MainViewModel) {
 
                         Spacer(Modifier.height(16.dp))
 
-                        // 테이블 개수 설정
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(stringResource(R.string.table_count))
                             Spacer(Modifier.width(12.dp))

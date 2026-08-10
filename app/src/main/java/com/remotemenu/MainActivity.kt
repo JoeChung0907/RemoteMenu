@@ -5,7 +5,6 @@ import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.os.Build
 import android.os.Bundle
-import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.core.app.ActivityCompat
@@ -64,6 +63,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    @Deprecated("Deprecated in Java")
     override fun onRequestPermissionsResult(
         requestCode: Int,
         permissions: Array<out String>,
@@ -83,8 +83,10 @@ class MainActivity : ComponentActivity() {
              * 실시간 언어 변경 엔진
              * ----------------------------- */
             val context = LocalContext.current
+            val currentConfig = LocalConfiguration.current
             val configuration = remember(language) {
-                Configuration(context.resources.configuration).apply {
+                Configuration(currentConfig).apply {
+                    @Suppress("DEPRECATION")
                     val locale = Locale(language)
                     Locale.setDefault(locale)
                     setLocale(locale)

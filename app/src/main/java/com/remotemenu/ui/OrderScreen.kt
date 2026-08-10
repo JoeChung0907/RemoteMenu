@@ -17,7 +17,6 @@ import com.remotemenu.R
 import com.remotemenu.model.CustomOption
 import com.remotemenu.model.MenuItem
 import com.remotemenu.model.OrderItem
-import com.remotemenu.bluetooth.BluetoothPrinter
 
 /**
  * OrderScreen
@@ -35,6 +34,7 @@ fun OrderScreen(
     var selectedMenu by remember { mutableStateOf<MenuItem?>(null) }
     var qty by remember { mutableStateOf("1") }
     val selectedOptions = remember { mutableStateListOf<CustomOption>() }
+    var showConfirmDialog by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
 
@@ -86,7 +86,7 @@ fun OrderScreen(
                 ) {
                     Column(Modifier.padding(8.dp)) {
                         Text(item.name)
-                        Text("£${item.price}")
+                        Text(stringResource(R.string.price_format, item.price))
                     }
                 }
             }
@@ -177,21 +177,32 @@ fun OrderScreen(
          * 최종 주문 확정 및 다중 프린트 실행
          * ----------------------------- */
         Button(
-            onClick = {
-                if (vm.selectedPrinters.isNotEmpty()) {
-                    vm.confirmOrders(context) { text ->
-                        val bp = BluetoothPrinter(context)
-                        // suspend lambda 내에서는 for-loop을 사용하여 순차적으로 suspend 함수 호출 가능
-                        for (printer in vm.selectedPrinters) {
-                            bp.printToDevice(printer, text)
-                        }
-                    }
-                }
-            },
+            onClick = { showConfirmDialog = true },
             modifier = Modifier.fillMaxWidth(),
-            enabled = vm.selectedPrinters.isNotEmpty()
+            enabled = vm.selectedPrinters.isNotEmpty() && vm.currentOrders.isNotEmpty()
         ) {
             Text(stringResource(R.string.confirm_order_and_print))
+        }
+
+        if (showConfirmDialog) {
+            AlertDialog(
+                onDismissRequest = { showConfirmDialog = false },
+                title = { Text(stringResource(R.string.confirm_order_and_print)) },
+                text = { Text(stringResource(R.string.confirm)) },
+                confirmButton = {
+                    TextButton(onClick = {
+                        vm.confirmOrders(context)
+                        showConfirmDialog = false
+                    }) {
+                        Text(stringResource(R.string.confirm))
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showConfirmDialog = false }) {
+                        Text(stringResource(R.string.cancel))
+                    }
+                }
+            )
         }
     }
 }
