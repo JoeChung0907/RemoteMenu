@@ -10,23 +10,23 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.stringResource
 import com.remotemenu.MainViewModel
 import com.remotemenu.R
-import com.remotemenu.model.OrderHistoryItem
 import java.text.SimpleDateFormat
 import java.util.*
 
 /**
  * HistoryScreen
- * 과거 주문 내역을 리스트 형태로 보여주는 화면 컴포저블.
+ * 과거 주문 내역을 리스트 형태로 보여주는 화면 컴포저블입니다.
  */
 @Composable
 fun HistoryScreen(
     modifier: Modifier = Modifier,
     vm: MainViewModel
 ) {
+    // 날짜 및 시간 포맷 설정
     val formatter = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
 
     /** -----------------------------
-     * 화면 레이아웃
+     * 화면 레이아웃 구성
      * ----------------------------- */
     Column(modifier.padding(16.dp)) {
 
@@ -36,7 +36,7 @@ fun HistoryScreen(
         )
 
         /** -----------------------------
-         * 빈 내역 처리
+         * 빈 내역 처리 및 리스트 렌더링
          * ----------------------------- */
         if (vm.orderHistory.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = androidx.compose.ui.Alignment.Center) {
@@ -44,24 +44,28 @@ fun HistoryScreen(
             }
         }
 
-        /** -----------------------------
-         * 주문 기록 리스트 (LazyColumn)
-         * ----------------------------- */
         LazyColumn {
-            items(vm.orderHistory) { item: OrderHistoryItem ->
+            items(vm.orderHistory) { item ->
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(4.dp)
+                        .padding(vertical = 4.dp)
                 ) {
                     Column(Modifier.padding(8.dp)) {
-                        // 주문 시간 표시
-                        Text(formatter.format(Date(item.timestamp)))
+                        // 주문이 확정된 시간 표시
+                        Text(
+                            text = formatter.format(Date(item.timestamp)),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
                         
                         Spacer(Modifier.height(4.dp))
                         
-                        // 주문 상세 텍스트 표시
-                        Text(item.printedText)
+                        // 실제 인쇄된 주문서 내용 전문 표시
+                        Text(
+                            text = item.printedText,
+                            style = MaterialTheme.typography.bodySmall
+                        )
                     }
                 }
             }

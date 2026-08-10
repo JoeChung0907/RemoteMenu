@@ -58,6 +58,11 @@
 <string name="confirm">Confirm</string>
 <string name="cancel">Cancel</string>
 
+<!-- Error Diagnosis -->
+<string name="error_dialog_title">System Error</string>
+<string name="error_copy_guide">Please send the following error code to the developer.</string>
+<string name="error_confirm">OK</string>
+
 <!-- Order -->
 <string name="select_table">Select Table</string>
 <string name="table_number">Table No.</string>

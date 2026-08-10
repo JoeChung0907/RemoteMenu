@@ -58,6 +58,11 @@
 <string name="confirm">확인</string>
 <string name="cancel">취소</string>
 
+<!-- Error Diagnosis -->
+<string name="error_dialog_title">시스템 오류 발생</string>
+<string name="error_copy_guide">아래의 오류 코드를 개발자에게 전달해주세요.</string>
+<string name="error_confirm">확인</string>
+
 <!-- Order -->
 <string name="select_table">테이블 선택</string>
 <string name="table_number">테이블 번호</string>

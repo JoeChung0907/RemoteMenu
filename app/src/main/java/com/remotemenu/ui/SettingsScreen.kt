@@ -27,7 +27,7 @@ import com.remotemenu.R
 
 /**
  * SettingsScreen
- * 프린터 연결, 메뉴 관리, 언어 설정 등 앱의 전반적인 설정을 담당하는 화면 컴포저블.
+ * 프린터 연결 관리, 메뉴 설정(추가/삭제/가져오기), 언어 및 시스템 관리를 담당하는 설정 화면입니다.
  */
 @Composable
 fun SettingsScreen(modifier: Modifier = Modifier, vm: MainViewModel) {
@@ -35,7 +35,7 @@ fun SettingsScreen(modifier: Modifier = Modifier, vm: MainViewModel) {
     val context = LocalContext.current
 
     /** -----------------------------
-     * UI 상태 및 리소스 변수
+     * 리소스 문자열 변수화 (성능 최적화)
      * ----------------------------- */
     val resetCompleteText = stringResource(R.string.reset_complete)
     val importSuccessText = stringResource(R.string.import_success)
@@ -51,7 +51,7 @@ fun SettingsScreen(modifier: Modifier = Modifier, vm: MainViewModel) {
     ) {
 
         /** -----------------------------
-         * 좌측 패널 (프린터 관리 + 메뉴 리스트)
+         * 좌측 패널: 프린터 관리 및 메뉴 목록
          * ----------------------------- */
         Column(
             modifier = Modifier
@@ -60,9 +60,10 @@ fun SettingsScreen(modifier: Modifier = Modifier, vm: MainViewModel) {
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
 
-            /** -----------------------------
+            /**
              * 프린터 관리 섹션
-             * ----------------------------- */
+             * 블루투스 권한 체크 및 다중 프린터 선택/테스트 기능을 제공합니다.
+             */
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(MaterialTheme.colorScheme.surfaceVariant)
@@ -71,14 +72,17 @@ fun SettingsScreen(modifier: Modifier = Modifier, vm: MainViewModel) {
                     Text(stringResource(R.string.printer_management), style = MaterialTheme.typography.titleMedium)
                     Spacer(Modifier.height(8.dp))
 
+                    // 앱 시작 시 페어링된 기기 목록 자동 로드
                     LaunchedEffect(Unit) {
                         vm.loadBluetoothPrinters(context)
                     }
 
+                    // Android 12 이상 런타임 권한 대응
                     val hasPermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                         ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED
                     } else true
 
+                    // 현재 선택된 프린터 개수 표시
                     val selectedCount = vm.selectedPrinters.size
                     val statusText = if (selectedCount == 0) {
                         stringResource(R.string.printer_not_connected)
@@ -87,9 +91,9 @@ fun SettingsScreen(modifier: Modifier = Modifier, vm: MainViewModel) {
                     }
 
                     Text(statusText, style = MaterialTheme.typography.bodyMedium)
-                    
                     Spacer(Modifier.height(12.dp))
 
+                    // 기기 목록 렌더링 (체크박스 토글 방식)
                     vm.bluetoothPrinters.forEach { device ->
                         val isSelected = vm.selectedPrinters.contains(device)
                         val deviceName = try {
@@ -109,15 +113,13 @@ fun SettingsScreen(modifier: Modifier = Modifier, vm: MainViewModel) {
                                 checked = isSelected,
                                 onCheckedChange = { vm.togglePrinter(context, device) }
                             )
-                            Text(
-                                text = deviceName,
-                                style = MaterialTheme.typography.bodySmall
-                            )
+                            Text(text = deviceName, style = MaterialTheme.typography.bodySmall)
                         }
                     }
 
                     Spacer(Modifier.height(8.dp))
 
+                    // 테스트 인쇄 버튼
                     Button(
                         onClick = { showPrintConfirmDialog = true },
                         modifier = Modifier.align(Alignment.End),
@@ -126,6 +128,7 @@ fun SettingsScreen(modifier: Modifier = Modifier, vm: MainViewModel) {
                         Text(stringResource(R.string.test_print_button))
                     }
 
+                    // 인쇄 실행 전 최종 확인 다이얼로그
                     if (showPrintConfirmDialog) {
                         AlertDialog(
                             onDismissRequest = { showPrintConfirmDialog = false },
@@ -145,9 +148,10 @@ fun SettingsScreen(modifier: Modifier = Modifier, vm: MainViewModel) {
                 }
             }
 
-            /** -----------------------------
+            /**
              * 등록된 메뉴 리스트 섹션
-             * ----------------------------- */
+             * 현재 시스템에 등록된 모든 메뉴를 확인하고 개별 삭제할 수 있습니다.
+             */
             Card(
                 modifier = Modifier.weight(1f).fillMaxWidth(),
                 colors = CardDefaults.cardColors(MaterialTheme.colorScheme.surfaceVariant)
@@ -167,6 +171,7 @@ fun SettingsScreen(modifier: Modifier = Modifier, vm: MainViewModel) {
                                     Text(item.name, style = MaterialTheme.typography.bodyMedium)
                                     Text(stringResource(R.string.price_format, item.price), style = MaterialTheme.typography.bodySmall)
                                 }
+                                // 메뉴 개별 삭제 아이콘
                                 IconButton(onClick = { vm.removeMenu(context, item) }) { 
                                     Icon(Icons.Default.Delete, contentDescription = null) 
                                 }
@@ -178,7 +183,7 @@ fun SettingsScreen(modifier: Modifier = Modifier, vm: MainViewModel) {
         }
 
         /** -----------------------------
-         * 우측 패널 (메뉴 추가 + 일괄 가져오기 + 앱 설정)
+         * 우측 패널: 메뉴 추가 및 시스템 설정
          * ----------------------------- */
         LazyColumn(
             modifier = Modifier
@@ -186,9 +191,9 @@ fun SettingsScreen(modifier: Modifier = Modifier, vm: MainViewModel) {
                 .fillMaxHeight(),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            /** -----------------------------
-             * 메뉴 추가 섹션
-             * ----------------------------- */
+            /**
+             * 메뉴 수동 추가 섹션
+             */
             item {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -227,21 +232,20 @@ fun SettingsScreen(modifier: Modifier = Modifier, vm: MainViewModel) {
 
                         var showAllergyDialog by remember { mutableStateOf(false) }
 
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            OutlinedTextField(
-                                value = allergy,
-                                onValueChange = {},
-                                label = { Text(stringResource(R.string.allergy_info)) },
-                                modifier = Modifier.weight(1f).clickable { showAllergyDialog = true },
-                                readOnly = true,
-                                enabled = false,
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    disabledTextColor = MaterialTheme.colorScheme.onSurface,
-                                    disabledBorderColor = MaterialTheme.colorScheme.outline,
-                                    disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
+                        // 알러지 정보 입력란 (클릭 시 다이얼로그 노출)
+                        OutlinedTextField(
+                            value = allergy,
+                            onValueChange = {},
+                            label = { Text(stringResource(R.string.allergy_info)) },
+                            modifier = Modifier.weight(1f).clickable { showAllergyDialog = true },
+                            readOnly = true,
+                            enabled = false,
+                            colors = OutlinedTextFieldDefaults.colors(
+                                disabledTextColor = MaterialTheme.colorScheme.onSurface,
+                                disabledBorderColor = MaterialTheme.colorScheme.outline,
+                                disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant
                             )
-                        }
+                        )
 
                         if (showAllergyDialog) {
                             val selected = remember { mutableStateListOf<String>().apply { if (allergy.isNotEmpty()) addAll(allergy.split(", ")) } }
@@ -249,11 +253,7 @@ fun SettingsScreen(modifier: Modifier = Modifier, vm: MainViewModel) {
                                 onDismissRequest = { showAllergyDialog = false },
                                 title = { Text(stringResource(R.string.allergy_selection)) },
                                 text = {
-                                    Column(
-                                        modifier = Modifier
-                                            .heightIn(max = 400.dp)
-                                            .verticalScroll(rememberScrollState())
-                                    ) {
+                                    Column(Modifier.heightIn(max = 400.dp).verticalScroll(rememberScrollState())) {
                                         allergyItems.forEach { item ->
                                             Row(
                                                 verticalAlignment = Alignment.CenterVertically,
@@ -262,10 +262,7 @@ fun SettingsScreen(modifier: Modifier = Modifier, vm: MainViewModel) {
                                                     else selected.add(item)
                                                 }
                                             ) {
-                                                Checkbox(
-                                                    checked = selected.contains(item),
-                                                    onCheckedChange = null
-                                                )
+                                                Checkbox(checked = selected.contains(item), onCheckedChange = null)
                                                 Text(item)
                                             }
                                         }
@@ -280,7 +277,7 @@ fun SettingsScreen(modifier: Modifier = Modifier, vm: MainViewModel) {
                             )
                         }
 
-                        // 옵션 추가 UI
+                        // 개별 옵션 추가 영역
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             OutlinedTextField(
                                 value = optionText,
@@ -302,6 +299,7 @@ fun SettingsScreen(modifier: Modifier = Modifier, vm: MainViewModel) {
                             Text(stringResource(R.string.options_prefix, options.joinToString()), style = MaterialTheme.typography.bodySmall)
                         }
 
+                        // 메뉴 최종 저장 실행
                         Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
                             Button(onClick = {
                                 val p = price.toIntOrNull()
@@ -315,9 +313,9 @@ fun SettingsScreen(modifier: Modifier = Modifier, vm: MainViewModel) {
                 }
             }
 
-            /** -----------------------------
-             * 메뉴 일괄 가져오기 섹션
-             * ----------------------------- */
+            /**
+             * 메뉴 일괄 가져오기 섹션 (JSON 기반)
+             */
             item {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -354,9 +352,9 @@ fun SettingsScreen(modifier: Modifier = Modifier, vm: MainViewModel) {
                 }
             }
 
-            /** -----------------------------
-             * 시스템 설정 섹션 (언어 및 테이블)
-             * ----------------------------- */
+            /**
+             * 언어 및 테이블 개수 설정 섹션
+             */
             item {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -366,6 +364,7 @@ fun SettingsScreen(modifier: Modifier = Modifier, vm: MainViewModel) {
                         Text(stringResource(R.string.menu_settings), style = MaterialTheme.typography.titleMedium)
                         Spacer(Modifier.height(12.dp))
 
+                        // 언어 전환 토글
                         Text(stringResource(R.string.language_settings), style = MaterialTheme.typography.bodySmall)
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             listOf("ko" to R.string.lang_ko, "en" to R.string.lang_en).forEach { (code, res) ->
@@ -379,6 +378,7 @@ fun SettingsScreen(modifier: Modifier = Modifier, vm: MainViewModel) {
 
                         Spacer(Modifier.height(16.dp))
 
+                        // 테이블 개수 조절 (NumberPicker 사용)
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(stringResource(R.string.table_count))
                             Spacer(Modifier.width(12.dp))
@@ -397,9 +397,9 @@ fun SettingsScreen(modifier: Modifier = Modifier, vm: MainViewModel) {
                 }
             }
 
-            /** -----------------------------
-             * 데이터 관리 섹션 (초기화)
-             * ----------------------------- */
+            /**
+             * 시스템 데이터 전체 초기화 섹션 (주의 필요)
+             */
             item {
                 var showResetDialog by remember { mutableStateOf(false) }
                 Button(
