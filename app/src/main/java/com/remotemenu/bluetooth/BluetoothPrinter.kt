@@ -6,9 +6,9 @@ import android.bluetooth.BluetoothSocket
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
-import android.util.Log
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import java.io.IOException
 import java.nio.charset.Charset
@@ -16,73 +16,93 @@ import java.util.UUID
 
 /**
  * BluetoothPrinter
- * 선택된 블루투스 기기(Epson 규격)로 데이터를 전송하여 실제 영수증을 출력하는 기능을 담당합니다.
+ * 가상 환경 및 특정 하드웨어에서 발생하는 'read ret: -1' 및 소켓 타임아웃 오류를 방지하기 위해
+ * 리플렉션 기반의 3단계 소켓 생성 로직과 안정화 지연 시간이 적용되었습니다.
  */
 class BluetoothPrinter(private val context: Context) {
 
-    // 표준 시리얼 포트 프로파일(SPP) UUID
     private val printerUUID: UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB")
 
-    /**
-     * printToDevice
-     * 지정된 블루투스 기기로 텍스트 데이터를 전송하여 인쇄합니다.
-     * @param device 인쇄할 대상 블루투스 기기
-     * @param text 출력할 영수증 텍스트 전문
-     */
     suspend fun printToDevice(device: BluetoothDevice, text: String) = withContext(Dispatchers.IO) {
-        /** -----------------------------
-         * 권한 체크 (Android 12 이상 대응)
-         * ----------------------------- */
         val hasPermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED
         } else true
 
-        if (!hasPermission) {
-            Log.e("BluetoothPrinter", "BLUETOOTH_CONNECT permission missing")
-            return@withContext
-        }
+        if (!hasPermission) throw SecurityException("Bluetooth permission denied (BLUETOOTH_CONNECT)")
 
         var socket: BluetoothSocket? = null
+        
         try {
-            Log.i("BluetoothPrinter", "Connecting to device: ${device.address}")
-            
-            // RFCOMM 소켓 생성 및 연결 시도
-            socket = device.createRfcommSocketToServiceRecord(printerUUID)
-            socket.connect()
-
-            socket.outputStream.use { stream ->
-                // 영국/유럽 Epson 프린터 표준 인코딩 적용
-                val charset = Charset.forName("windows-1252")
-                
-                /** -----------------------------
-                 * ESC/POS 프린터 명령어 설정
-                 * ----------------------------- */
-                val escInit = byteArrayOf(0x1B, 0x40)               // 프린터 초기화
-                val selectWpc1252 = byteArrayOf(0x1B, 0x74, 0x10)  // 서구권 문자표(WPC1252) 선택
-                val fontSizeLarge = byteArrayOf(0x1D, 0x21, 0x11)    // 2배 확대 (가로/세로)
-                val fontSizeNormal = byteArrayOf(0x1D, 0x21, 0x00)   // 일반 크기 복구
-                
-                // 1. 설정 명령 전송
-                stream.write(escInit)
-                stream.write(selectWpc1252)
-                stream.write(fontSizeLarge)
-                
-                // 2. 본문 인쇄
-                stream.write(text.toByteArray(charset))
-                
-                // 3. 설정 초기화 및 용지 배출(Feed)
-                stream.write(fontSizeNormal)
-                val tailPadding = "\n".repeat(10) // 잘 뜯기도록 하단 여백 추가
-                stream.write(tailPadding.toByteArray(charset))
-                
-                stream.flush()
+            /** -----------------------------
+             * 1. 3단계 강력 소켓 생성 전략
+             * ----------------------------- */
+            socket = try {
+                // 시도 1: 표준 보안 소켓
+                device.createRfcommSocketToServiceRecord(printerUUID)
+            } catch (e1: Exception) {
+                try {
+                    // 시도 2: 표준 비보안 소켓
+                    device.createInsecureRfcommSocketToServiceRecord(printerUUID)
+                } catch (e2: Exception) {
+                    // 시도 3: 리플렉션 기반 직접 소켓 생성 (가상 환경/저가형 기기 최후의 수단)
+                    val method = device.javaClass.getMethod("createRfcommSocket", Int::class.javaPrimitiveType)
+                    method.invoke(device, 1) as BluetoothSocket
+                }
             }
-            Log.i("BluetoothPrinter", "Printed successfully to ${device.name ?: device.address}")
-        } catch (e: IOException) {
-            Log.e("BluetoothPrinter", "Printing failed: ${e.message}")
+
+            /** -----------------------------
+             * 2. 연결 및 안정화 (Connect & Stabilize)
+             * ----------------------------- */
+            try {
+                socket?.connect()
+                // 연결 직후 소켓이 안정화될 때까지 짧은 대기 (read ret: -1 방지)
+                delay(200) 
+            } catch (e: IOException) {
+                throw IOException("Connection failed. Check if the printer is on: ${e.message}")
+            }
+
+            val stream = socket?.outputStream ?: throw IOException("Could not open output stream")
+            val charset = Charset.forName("windows-1252")
+            
+            // 3. 프린터 초기화 명령
+            val escInit = byteArrayOf(0x1B, 0x40)
+            val selectWpc1252 = byteArrayOf(0x1B, 0x74, 0x10)
+            val fontSizeLarge = byteArrayOf(0x1D, 0x21, 0x11)
+            val fontSizeNormal = byteArrayOf(0x1D, 0x21, 0x00)
+            
+            stream.write(escInit)
+            stream.write(selectWpc1252)
+            stream.write(fontSizeLarge)
+
+            /** -----------------------------
+             * 4. 본문 분할 전송 (Chunking)
+             * ----------------------------- */
+            val fullBytes = text.toByteArray(charset)
+            val chunkSize = 256 // 더 작은 조각으로 나누어 안정성 강화
+            var offset = 0
+            
+            while (offset < fullBytes.size) {
+                val count = Math.min(chunkSize, fullBytes.size - offset)
+                stream.write(fullBytes, offset, count)
+                offset += count
+                // 프린터 하드웨어가 데이터를 소화할 시간 제공 (버퍼 타임아웃 방지)
+                delay(50) 
+            }
+
+            // 5. 마무리 명령 및 용지 배출
+            stream.write(fontSizeNormal)
+            val padding = "\n\n\n\n\n\n\n\n\n\n".toByteArray(charset)
+            stream.write(padding)
+            
+            stream.flush()
+
+        } catch (e: Exception) {
+            // 상세한 원인을 포함한 에러를 상위로 전달
+            throw IOException("Printing failed: ${e.message}")
         } finally {
-            // 소켓 자원 해제
-            try { socket?.close() } catch (_: IOException) {}
+            try {
+                socket?.close()
+            } catch (_: IOException) {}
         }
     }
 }

@@ -21,7 +21,7 @@
 <string name="add_menu">Add Menu</string>
 <string name="menu_name">Name</string>
 <string name="price_currency">Price (£)</string>
-<string name="price_format">£%1$d</string>
+<string name="price_format">£%1$.2f</string>
 <string name="allergy_info">Allergies</string>
 <string name="select">Select</string>
 <string name="add_option">Add Option</string>
@@ -87,7 +87,7 @@
 <string name="receipt_menu">Menu: %1$s\n</string>
 <string name="receipt_quantity">Qty: %1$d\n</string>
 <string name="receipt_options">Options:\n</string>
-<string name="receipt_total">Total: £%1$d\n</string>
+<string name="receipt_total">Total: £%1$.2f\n</string>
 <string name="receipt_divider">----------------------\n</string>
 
 <!-- Allergies -->

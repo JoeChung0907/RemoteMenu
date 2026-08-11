@@ -21,7 +21,7 @@
 <string name="add_menu">메뉴 추가</string>
 <string name="menu_name">메뉴 이름</string>
 <string name="price_currency">가격 (통화 : £ )</string>
-<string name="price_format">£%1$d</string>
+<string name="price_format">£%1$.2f</string>
 <string name="allergy_info">알러지 정보</string>
 <string name="select">선택</string>
 <string name="add_option">옵션 추가</string>
@@ -87,7 +87,7 @@
 <string name="receipt_menu">메뉴: %1$s\n</string>
 <string name="receipt_quantity">수량: %1$d\n</string>
 <string name="receipt_options">옵션:\n</string>
-<string name="receipt_total">합계: £%1$d\n</string>
+<string name="receipt_total">합계: £%1$.2f\n</string>
 <string name="receipt_divider">----------------------\n</string>
 
 <!-- Allergies -->

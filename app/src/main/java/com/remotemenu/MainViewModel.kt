@@ -20,19 +20,13 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.PrintWriter
 import java.io.StringWriter
+import java.util.Locale
 
-/**
- * MainViewModel
- * 앱의 전체적인 상태(메뉴, 주문, 프린터, 설정 등)를 관리하고 비즈니스 로직을 처리합니다.
- */
 class MainViewModel : ViewModel() {
 
     private val storage = StorageManager()
     private val gson = Gson()
 
-    /** -----------------------------
-     * UI 상태 및 에러 관리 변수
-     * ----------------------------- */
     val tableCount = mutableStateOf(1)
     val menuItems = mutableStateListOf<MenuItem>()
     val currentOrders = mutableStateListOf<OrderItem>()
@@ -40,8 +34,6 @@ class MainViewModel : ViewModel() {
     val bluetoothPrinters = mutableStateListOf<BluetoothDevice>()
     val selectedPrinters = mutableStateListOf<BluetoothDevice>()
     val currentLanguage = mutableStateOf("ko")
-
-    // 에러 발생 시 UI에 띄울 진단 메시지
     val globalErrorMessage = mutableStateOf<String?>(null)
 
     private var menuId = 1
@@ -49,27 +41,13 @@ class MainViewModel : ViewModel() {
     private var orderId = 1
     private var historyId = 1
 
-    /**
-     * showError
-     * 예외 발생 시 에러 코드를 생성하여 진단 다이얼로그를 활성화합니다.
-     * @param tag 에러 발생 위치 태그
-     * @param e 발생한 Throwable 객체
-     */
     fun showError(tag: String, e: Throwable) {
         val sw = StringWriter()
         e.printStackTrace(PrintWriter(sw))
-        val stackTrace = sw.toString()
-        android.util.Log.e("RemoteMenuError", "[$tag] ${e.message}", e)
-        
-        val errorCode = "[ERR-${tag.uppercase()}]\n${e.message}\n\n${stackTrace.take(200)}..."
+        val errorCode = "[ERR-${tag.uppercase()}]\n${e.message}\n\n${sw.toString().take(200)}..."
         globalErrorMessage.value = errorCode
     }
 
-    /**
-     * initialize
-     * 앱 시작 시 저장된 데이터를 불러오고 내부 상태를 복원합니다.
-     * @param context 애플리케이션 컨텍스트
-     */
     fun initialize(context: Context) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
@@ -78,23 +56,17 @@ class MainViewModel : ViewModel() {
                     if (data.isEmpty) {
                         resetInternalState()
                     } else {
-                        // 데이터 복구 로직
                         menuItems.clear()
                         menuItems.addAll(data.menus)
                         tableCount.value = data.tableCount
                         orderHistory.clear()
                         orderHistory.addAll(data.history)
                         currentLanguage.value = data.language
-
                         updateInternalIds()
                         loadBluetoothPrinters(context)
-                        
-                        // 선택된 프린터 복원
                         selectedPrinters.clear()
-                        data.printerNames.forEach { name ->
-                            bluetoothPrinters.firstOrNull { 
-                                try { it.name == name } catch (_: SecurityException) { false }
-                            }?.let { selectedPrinters.add(it) }
+                        data.printerNames.forEach { savedAddr ->
+                            bluetoothPrinters.firstOrNull { it.address == savedAddr }?.let { selectedPrinters.add(it) }
                         }
                     }
                 }
@@ -104,20 +76,12 @@ class MainViewModel : ViewModel() {
         }
     }
 
-    /**
-     * updateInternalIds
-     * 기존 데이터 중 최대 ID를 찾아 다음 ID 생성 기준을 설정합니다.
-     */
     private fun updateInternalIds() {
         menuId = (menuItems.maxOfOrNull { it.id } ?: 0) + 1
         optionId = (menuItems.flatMap { it.customOptions }.maxOfOrNull { it.id } ?: 0) + 1
         historyId = (orderHistory.maxOfOrNull { it.id } ?: 0) + 1
     }
 
-    /**
-     * resetInternalState
-     * 메모리상의 모든 상태와 ID를 초기값으로 리셋합니다.
-     */
     private fun resetInternalState() {
         tableCount.value = 1
         menuItems.clear()
@@ -128,59 +92,37 @@ class MainViewModel : ViewModel() {
         menuId = 1; optionId = 1; orderId = 1; historyId = 1
     }
 
-    /**
-     * forceSave
-     * 현재 상태를 영구 저장소(DataStore)에 기록합니다.
-     * @param context 애플리케이션 컨텍스트
-     */
     fun forceSave(context: Context) {
         val data = StorageManager.LoadedData(
             menus = menuItems.toList(),
             tableCount = tableCount.value,
             history = orderHistory.toList(),
-            printerNames = selectedPrinters.mapNotNull { 
-                try { it.name } catch (_: SecurityException) { it.address }
-            },
+            printerNames = selectedPrinters.map { it.address },
             language = currentLanguage.value
         )
         viewModelScope.launch(Dispatchers.IO) {
-            try {
-                storage.saveAll(context, data)
-            } catch (e: Exception) {
+            try { storage.saveAll(context, data) } catch (e: Exception) {
                 withContext(Dispatchers.Main) { showError("SAVE", e) }
             }
         }
     }
 
-    /** -----------------------------
-     * 메뉴 관리 관련 함수
-     * ----------------------------- */
-
-    fun addMenu(context: Context, name: String, price: Int, allergy: String, options: List<String>) {
+    fun addMenu(context: Context, name: String, price: Double, allergy: String, options: List<String>) {
         val optionObjs = options.map { CustomOption(optionId++, it) }
         menuItems.add(MenuItem(menuId++, name, price, allergy, optionObjs))
         forceSave(context)
     }
 
-    /**
-     * importMenus
-     * JSON 텍스트를 파싱하여 메뉴 목록을 일괄 추가합니다.
-     * @param context 애플리케이션 컨텍스트
-     * @param json 입력받은 JSON 텍스트
-     * @return 추가된 메뉴 개수 (실패 시 -1)
-     */
     fun importMenus(context: Context, json: String): Int {
         return try {
             val type = object : TypeToken<List<Map<String, Any>>>() {}.type
             val data: List<Map<String, Any>> = gson.fromJson(json, type)
             var count = 0
-            
             data.forEach { item ->
                 val name = item["name"] as? String ?: ""
-                val price = (item["price"] as? Double)?.toInt() ?: 0
+                val price = (item["price"] as? Number)?.toDouble() ?: 0.0
                 val allergy = item["allergy"] as? String ?: ""
-                val options = (item["options"] as? List<*>)?.mapNotNull { it as? String } ?: emptyList()
-                
+                val options = (item["options"] as? List<*>)?.filterIsInstance<String>() ?: emptyList()
                 if (name.isNotEmpty()) {
                     val optionObjs = options.map { CustomOption(optionId++, it) }
                     menuItems.add(MenuItem(menuId++, name, price, allergy, optionObjs))
@@ -200,10 +142,6 @@ class MainViewModel : ViewModel() {
         forceSave(context)
     }
 
-    /** -----------------------------
-     * 주문 및 설정 관리 관련 함수
-     * ----------------------------- */
-
     fun updateTableCount(context: Context, count: Int) {
         tableCount.value = count
         forceSave(context)
@@ -217,10 +155,6 @@ class MainViewModel : ViewModel() {
         currentOrders.remove(order)
     }
 
-    /**
-     * clearHistory
-     * 누적된 모든 주문 기록을 삭제하고 저장소에 반영합니다.
-     */
     fun clearHistory(context: Context) {
         orderHistory.clear()
         forceSave(context)
@@ -240,16 +174,12 @@ class MainViewModel : ViewModel() {
         }
     }
 
-    /**
-     * generateOrderText
-     * 현재 장바구니에 담긴 주문 목록을 인쇄용 텍스트 포맷으로 생성합니다.
-     */
     fun generateOrderText(context: Context): String {
         if (currentOrders.isEmpty()) return ""
         val sb = StringBuilder()
-        currentOrders.groupBy { it.tableNumber }.forEach { (table, list) ->
+        currentOrders.groupBy { it.tableNumber }.toSortedMap().forEach { (table, list) ->
             sb.append(context.getString(R.string.receipt_table_prefix, table))
-            sb.append("\n") // 가독성을 위한 공백 추가
+            sb.append("\n")
             list.forEach { o ->
                 sb.append(context.getString(R.string.receipt_menu, o.menuItem.name))
                 sb.append(context.getString(R.string.receipt_quantity, o.quantity))
@@ -257,45 +187,43 @@ class MainViewModel : ViewModel() {
                     sb.append(context.getString(R.string.receipt_options))
                     o.selectedOptions.forEach { opt -> sb.append(" - ${opt.label}\n") }
                 }
-                sb.append(context.getString(R.string.receipt_total, o.menuItem.price * o.quantity))
+                val totalPrice = o.menuItem.price * o.quantity
+                val priceText = String.format(Locale.US, "%.2f", totalPrice)
+                sb.append("Total: £$priceText\n")
                 sb.append(context.getString(R.string.receipt_divider))
             }
         }
         return sb.toString()
     }
 
-    /**
-     * confirmOrders
-     * 주문을 확정하고, 선택된 모든 프린터로 인쇄 후 기록을 저장합니다.
-     */
     fun confirmOrders(context: Context) {
         val text = generateOrderText(context)
         if (text.isEmpty()) return
+
+        if (selectedPrinters.isEmpty()) {
+            showError("PRINT", RuntimeException("선택된 프린터가 없습니다. [설정] 탭에서 프린터를 먼저 체크해 주세요."))
+            return
+        }
         
         viewModelScope.launch {
             try {
                 val bp = BluetoothPrinter(context)
-                // 개별 프린터 오류가 전체 프로세스에 영향을 주지 않도록 각각 예외 처리
                 for (printer in selectedPrinters) {
                     try {
                         bp.printToDevice(printer, text)
                     } catch (e: Exception) {
-                        showError("PRINT_DEVICE", e)
+                        withContext(Dispatchers.Main) { showError("PRINT_DEVICE", e) }
                     }
                 }
                 orderHistory.add(0, OrderHistoryItem(historyId++, System.currentTimeMillis(), text))
                 currentOrders.clear()
                 forceSave(context)
             } catch (e: Exception) {
-                showError("CONFIRM_ORDERS", e)
+                withContext(Dispatchers.Main) { showError("CONFIRM_ORDERS", e) }
             }
         }
     }
 
-    /**
-     * printTest
-     * 현재 장바구니 내역을 바탕으로 테스트 인쇄를 수행합니다.
-     */
     fun printTest(context: Context) {
         viewModelScope.launch {
             try {
@@ -303,23 +231,24 @@ class MainViewModel : ViewModel() {
                 val testText = context.getString(R.string.test_print_text)
                 val finalText = if (orderText.isEmpty()) testText else "$orderText\n$testText"
                 
+                if (selectedPrinters.isEmpty()) {
+                    showError("PRINT", RuntimeException("선택된 프린터가 없습니다."))
+                    return@launch
+                }
+
                 val bp = BluetoothPrinter(context)
                 for (printer in selectedPrinters) {
                     try {
                         bp.printToDevice(printer, finalText)
                     } catch (e: Exception) {
-                        showError("TEST_PRINT_DEVICE", e)
+                        withContext(Dispatchers.Main) { showError("TEST_PRINT_DEVICE", e) }
                     }
                 }
             } catch (e: Exception) {
-                showError("PRINT_TEST", e)
+                withContext(Dispatchers.Main) { showError("PRINT_TEST", e) }
             }
         }
     }
-
-    /** -----------------------------
-     * 블루투스 관리 관련 함수
-     * ----------------------------- */
 
     fun loadBluetoothPrinters(context: Context) {
         try {
@@ -338,8 +267,12 @@ class MainViewModel : ViewModel() {
     }
 
     fun togglePrinter(context: Context, device: BluetoothDevice) {
-        if (selectedPrinters.contains(device)) selectedPrinters.remove(device)
-        else selectedPrinters.add(device)
+        val existing = selectedPrinters.firstOrNull { it.address == device.address }
+        if (existing != null) {
+            selectedPrinters.remove(existing)
+        } else {
+            selectedPrinters.add(device)
+        }
         forceSave(context)
     }
 
