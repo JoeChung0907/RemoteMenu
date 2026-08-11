@@ -275,14 +275,19 @@ class MainViewModel : ViewModel() {
         viewModelScope.launch {
             try {
                 val bp = BluetoothPrinter(context)
+                // 개별 프린터 오류가 전체 프로세스에 영향을 주지 않도록 각각 예외 처리
                 for (printer in selectedPrinters) {
-                    bp.printToDevice(printer, text)
+                    try {
+                        bp.printToDevice(printer, text)
+                    } catch (e: Exception) {
+                        showError("PRINT_DEVICE", e)
+                    }
                 }
                 orderHistory.add(0, OrderHistoryItem(historyId++, System.currentTimeMillis(), text))
                 currentOrders.clear()
                 forceSave(context)
             } catch (e: Exception) {
-                showError("PRINT", e)
+                showError("CONFIRM_ORDERS", e)
             }
         }
     }
@@ -300,10 +305,14 @@ class MainViewModel : ViewModel() {
                 
                 val bp = BluetoothPrinter(context)
                 for (printer in selectedPrinters) {
-                    bp.printToDevice(printer, finalText)
+                    try {
+                        bp.printToDevice(printer, finalText)
+                    } catch (e: Exception) {
+                        showError("TEST_PRINT_DEVICE", e)
+                    }
                 }
             } catch (e: Exception) {
-                showError("TEST_PRINT", e)
+                showError("PRINT_TEST", e)
             }
         }
     }
