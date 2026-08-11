@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-<string name="app_name">RemoteMenu</string>
+<string name="app_name">OrderFlow</string>
 
 <!-- Navigation -->
 <string name="tab_settings">Settings</string>
@@ -78,6 +78,9 @@
 <!-- History -->
 <string name="order_history">Order History</string>
 <string name="history_empty">No order history.</string>
+<string name="clear_history">Clear History</string>
+<string name="clear_history_dialog_title">Clear Order History</string>
+<string name="clear_history_dialog_message">Are you sure you want to delete all order history? This cannot be undone.</string>
 
 <!-- Receipt Format -->
 <string name="receipt_table_prefix">[Table %1$d]\n</string>

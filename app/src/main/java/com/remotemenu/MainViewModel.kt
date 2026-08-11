@@ -217,6 +217,15 @@ class MainViewModel : ViewModel() {
         currentOrders.remove(order)
     }
 
+    /**
+     * clearHistory
+     * 누적된 모든 주문 기록을 삭제하고 저장소에 반영합니다.
+     */
+    fun clearHistory(context: Context) {
+        orderHistory.clear()
+        forceSave(context)
+    }
+
     fun resetAllData(context: Context, onComplete: () -> Unit) {
         viewModelScope.launch(Dispatchers.IO) {
             try {

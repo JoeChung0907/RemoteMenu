@@ -6,8 +6,12 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
@@ -31,7 +35,7 @@ fun OrderScreen(
      * ----------------------------- */
     var selectedTable by remember { mutableIntStateOf(1) }
     var selectedMenu by remember { mutableStateOf<MenuItem?>(null) }
-    var qty by remember { mutableStateOf("1") }
+    var qty by remember { mutableIntStateOf(1) } // String에서 Int로 변경 (렉 방지 및 입력 간소화)
     val selectedOptions = remember { mutableStateListOf<CustomOption>() }
     var showConfirmDialog by remember { mutableStateOf(false) }
 
@@ -43,7 +47,7 @@ fun OrderScreen(
     Column(modifier.padding(16.dp)) {
 
         /** -----------------------------
-         * 테이블 선택 섹션 (수평 스크롤 칩 방식)
+         * 테이블 선택 섹션
          * ----------------------------- */
         Text(stringResource(R.string.select_table), style = MaterialTheme.typography.titleMedium)
         Spacer(Modifier.height(8.dp))
@@ -54,7 +58,6 @@ fun OrderScreen(
                 .horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            // 설정된 테이블 개수만큼 루프를 돌며 버튼 생성
             for (i in 1..vm.tableCount.value) {
                 AssistChip(
                     onClick = { selectedTable = i },
@@ -69,7 +72,7 @@ fun OrderScreen(
         Spacer(Modifier.height(16.dp))
 
         /** -----------------------------
-         * 메뉴 선택 섹션 (리스트 뷰)
+         * 메뉴 선택 섹션
          * ----------------------------- */
         Text(stringResource(R.string.select_menu), style = MaterialTheme.typography.titleMedium)
 
@@ -93,28 +96,53 @@ fun OrderScreen(
         }
 
         /** -----------------------------
-         * 주문 상세 설정 (메뉴 선택 시 노출)
+         * 주문 상세 설정 (수량 조절 - 버튼 방식으로 변경)
          * ----------------------------- */
         selectedMenu?.let { menu ->
 
             Spacer(Modifier.height(16.dp))
             Text(stringResource(R.string.order_settings), style = MaterialTheme.typography.titleMedium)
 
-            // 수량 입력 필드
-            OutlinedTextField(
-                value = qty,
-                onValueChange = { qty = it.filter(Char::isDigit) },
-                label = { Text(stringResource(R.string.quantity)) },
-                modifier = Modifier.fillMaxWidth()
-            )
+            /**
+             * 수량 조절 레이아웃 (키보드 없이 터치로만 조작)
+             */
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center,
+                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
+            ) {
+                Text(stringResource(R.string.quantity), modifier = Modifier.weight(1f))
+                
+                // 마이너스 버튼
+                FilledIconButton(
+                    onClick = { if (qty > 1) qty-- },
+                    colors = IconButtonDefaults.filledIconButtonColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                ) {
+                    Icon(Icons.Default.Remove, contentDescription = "Decrease")
+                }
+
+                // 현재 수량 표시
+                Text(
+                    text = qty.toString(),
+                    style = MaterialTheme.typography.headlineMedium,
+                    modifier = Modifier.padding(horizontal = 24.dp)
+                )
+
+                // 플러스 버튼
+                FilledIconButton(
+                    onClick = { if (qty < 99) qty++ }
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = "Increase")
+                }
+            }
 
             Spacer(Modifier.height(8.dp))
 
-            // 커스텀 옵션(예: 알러지 특이사항 등) 선택 체크박스 목록
+            // 옵션 선택
             if (menu.customOptions.isNotEmpty()) {
                 Text(stringResource(R.string.custom_options))
                 menu.customOptions.forEach { opt ->
-                    Row {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(
                             checked = selectedOptions.contains(opt),
                             onCheckedChange = {
@@ -129,23 +157,18 @@ fun OrderScreen(
 
             Spacer(Modifier.height(8.dp))
 
-            /**
-             * 주문 추가 버튼
-             * 현재 구성을 장바구니(vm.currentOrders)에 담습니다.
-             */
             Button(
                 onClick = {
                     try {
-                        val q = qty.toIntOrNull() ?: 1
-                        vm.addOrder(selectedTable, menu, q, selectedOptions.toList())
-                        // 추가 후 필드 초기화
+                        vm.addOrder(selectedTable, menu, qty, selectedOptions.toList())
                         selectedOptions.clear()
-                        qty = "1"
+                        qty = 1 // 초기화
                         selectedMenu = null
                     } catch (e: Exception) {
                         vm.showError("ADD_ORDER", e)
                     }
-                }
+                },
+                modifier = Modifier.fillMaxWidth()
             ) {
                 Text(stringResource(R.string.add))
             }
@@ -154,29 +177,19 @@ fun OrderScreen(
         Spacer(Modifier.height(16.dp))
 
         /** -----------------------------
-         * 현재 주문 목록 (장바구니) 확인 섹션
+         * 장바구니 및 확정 버튼 (기존 동일)
          * ----------------------------- */
         Text(stringResource(R.string.order_list), style = MaterialTheme.typography.titleMedium)
 
         LazyColumn(modifier = Modifier.weight(1f)) {
             items(vm.currentOrders) { order ->
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(4.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.padding(8.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
+                Card(modifier = Modifier.fillMaxWidth().padding(4.dp)) {
+                    Row(Modifier.padding(8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                         Column {
                             Text(stringResource(R.string.table_format, order.tableNumber))
                             Text("${order.menuItem.name} x${order.quantity}")
                         }
-                        // 항목 삭제 버튼
-                        Button(onClick = { vm.removeOrder(order) }) {
-                            Text(stringResource(R.string.delete))
-                        }
+                        Button(onClick = { vm.removeOrder(order) }) { Text(stringResource(R.string.delete)) }
                     }
                 }
             }
@@ -184,9 +197,6 @@ fun OrderScreen(
 
         Spacer(Modifier.height(16.dp))
 
-        /** -----------------------------
-         * 최종 주문 확정 및 다중 인쇄 버튼
-         * ----------------------------- */
         Button(
             onClick = { showConfirmDialog = true },
             modifier = Modifier.fillMaxWidth(),
@@ -195,7 +205,6 @@ fun OrderScreen(
             Text(stringResource(R.string.confirm_order_and_print))
         }
 
-        // 주문 확정 재확인 다이얼로그
         if (showConfirmDialog) {
             AlertDialog(
                 onDismissRequest = { showConfirmDialog = false },
@@ -205,14 +214,10 @@ fun OrderScreen(
                     TextButton(onClick = {
                         vm.confirmOrders(context)
                         showConfirmDialog = false
-                    }) {
-                        Text(stringResource(R.string.confirm))
-                    }
+                    }) { Text(stringResource(R.string.confirm)) }
                 },
                 dismissButton = {
-                    TextButton(onClick = { showConfirmDialog = false }) {
-                        Text(stringResource(R.string.cancel))
-                    }
+                    TextButton(onClick = { showConfirmDialog = false }) { Text(stringResource(R.string.cancel)) }
                 }
             )
         }

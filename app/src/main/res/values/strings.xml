@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-<string name="app_name">RemoteMenu</string>
+<string name="app_name">OrderFlow</string>
 
 <!-- Navigation -->
 <string name="tab_settings">설정</string>
@@ -78,6 +78,9 @@
 <!-- History -->
 <string name="order_history">주문 기록</string>
 <string name="history_empty">주문 기록이 없습니다.</string>
+<string name="clear_history">기록 전체 삭제</string>
+<string name="clear_history_dialog_title">주문 기록 삭제</string>
+<string name="clear_history_dialog_message">모든 주문 기록을 삭제하시겠습니까? 삭제 후에는 복구할 수 없습니다.</string>
 
 <!-- Receipt Format -->
 <string name="receipt_table_prefix">[테이블 %1$d]\n</string>
