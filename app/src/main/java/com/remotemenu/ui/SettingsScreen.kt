@@ -32,7 +32,6 @@ import com.remotemenu.R
 fun SettingsScreen(modifier: Modifier = Modifier, vm: MainViewModel) {
 
     val context = LocalContext.current
-
     val resetCompleteText = stringResource(R.string.reset_complete)
     val importSuccessText = stringResource(R.string.import_success)
     val importErrorText = stringResource(R.string.import_error)
@@ -46,7 +45,6 @@ fun SettingsScreen(modifier: Modifier = Modifier, vm: MainViewModel) {
             modifier = Modifier.fillMaxSize().padding(16.dp),
             horizontalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-
             /** -----------------------------
              * 좌측 패널: 프린터 관리 및 메뉴 목록
              * ----------------------------- */
@@ -54,7 +52,6 @@ fun SettingsScreen(modifier: Modifier = Modifier, vm: MainViewModel) {
                 modifier = Modifier.weight(0.45f).fillMaxHeight(),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(MaterialTheme.colorScheme.surfaceVariant)
@@ -181,7 +178,6 @@ fun SettingsScreen(modifier: Modifier = Modifier, vm: MainViewModel) {
                                 )
                             )
 
-                            // 옵션 추가
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 OutlinedTextField(
                                     value = optionText,
@@ -202,13 +198,12 @@ fun SettingsScreen(modifier: Modifier = Modifier, vm: MainViewModel) {
                                 Button(onClick = {
                                     val p = price.toDoubleOrNull()
                                     if (name.isNotBlank() && p != null) {
-                                        vm.addMenu(context, name, p, allergy, options.toList())
+                                        vm.addMenu(context, "General", name, p, allergy, options.toList())
                                         name = ""; price = ""; allergy = ""; options.clear()
                                     }
                                 }) { Text(stringResource(R.string.save_menu)) }
                             }
                             
-                            // Allergy Overlay
                             if (showAllergyOverlay) {
                                 val allergyItems = listOf(R.string.allergy_milk, R.string.allergy_egg, R.string.allergy_peanut, R.string.allergy_soy, R.string.allergy_wheat, R.string.allergy_crustacean, R.string.allergy_fish, R.string.allergy_nut, R.string.allergy_sesame).map { stringResource(it) }
                                 val selected = remember { mutableStateListOf<String>().apply { if (allergy.isNotEmpty()) addAll(allergy.split(", ")) } }

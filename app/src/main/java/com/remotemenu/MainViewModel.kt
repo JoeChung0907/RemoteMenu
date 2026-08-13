@@ -12,7 +12,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.gson.Gson
-import com.google.gson.reflect.TypeToken
 import com.remotemenu.model.*
 import com.remotemenu.bluetooth.BluetoothPrinter
 import kotlinx.coroutines.Dispatchers
@@ -22,6 +21,10 @@ import java.io.PrintWriter
 import java.io.StringWriter
 import java.util.Locale
 
+/**
+ * MainViewModel
+ * 앱의 전체 상태 및 비즈니스 로직 관리.
+ */
 class MainViewModel : ViewModel() {
 
     private val storage = StorageManager()
@@ -41,6 +44,9 @@ class MainViewModel : ViewModel() {
     private var orderId = 1
     private var historyId = 1
 
+    /**
+     * 에러 메시지 표시 유틸리티.
+     */
     fun showError(tag: String, e: Throwable) {
         val sw = StringWriter()
         e.printStackTrace(PrintWriter(sw))
@@ -48,6 +54,9 @@ class MainViewModel : ViewModel() {
         globalErrorMessage.value = errorCode
     }
 
+    /**
+     * 초기화: 저장된 데이터 로드.
+     */
     fun initialize(context: Context) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
@@ -107,34 +116,56 @@ class MainViewModel : ViewModel() {
         }
     }
 
-    fun addMenu(context: Context, name: String, price: Double, allergy: String, options: List<String>) {
+    /**
+     * 메뉴 추가.
+     */
+    fun addMenu(context: Context, category: String, name: String, price: Double, allergy: String, options: List<String>) {
         val optionObjs = options.map { CustomOption(optionId++, it) }
-        menuItems.add(MenuItem(menuId++, name, price, allergy, optionObjs))
+        menuItems.add(MenuItem(menuId++, category, name, price, allergy, optionObjs))
         forceSave(context)
     }
 
+    /**
+     * JSON 기반 메뉴 일괄 가져오기.
+     */
     fun importMenus(context: Context, json: String): Int {
         return try {
-            val type = object : TypeToken<List<Map<String, Any>>>() {}.type
-            val data: List<Map<String, Any>> = gson.fromJson(json, type)
-            var count = 0
-            data.forEach { item ->
-                val name = item["name"] as? String ?: ""
-                val price = (item["price"] as? Number)?.toDouble() ?: 0.0
-                val allergy = item["allergy"] as? String ?: ""
-                val options = (item["options"] as? List<*>)?.filterIsInstance<String>() ?: emptyList()
-                if (name.isNotEmpty()) {
-                    val optionObjs = options.map { CustomOption(optionId++, it) }
-                    menuItems.add(MenuItem(menuId++, name, price, allergy, optionObjs))
-                    count++
+            val root = gson.fromJson(json, Any::class.java)
+            val newMenus = mutableListOf<MenuItem>()
+            
+            if (root is Map<*, *>) {
+                root.forEach { (cat, list) ->
+                    val categoryName = cat.toString()
+                    (list as? List<*>)?.forEach { item ->
+                        val m = item as? Map<*, *> ?: return@forEach
+                        newMenus.add(parseItem(categoryName, m))
+                    }
+                }
+            } else if (root is List<*>) {
+                root.forEach { item ->
+                    val m = item as? Map<*, *> ?: return@forEach
+                    newMenus.add(parseItem("General", m))
                 }
             }
-            forceSave(context)
-            count
+
+            if (newMenus.isNotEmpty()) {
+                menuItems.addAll(newMenus)
+                forceSave(context)
+            }
+            newMenus.size
         } catch (e: Exception) {
             showError("IMPORT", e)
             -1
         }
+    }
+
+    private fun parseItem(category: String, m: Map<*, *>): MenuItem {
+        val name = m["name"] as? String ?: "Unknown"
+        val price = (m["price"] as? Number)?.toDouble() ?: 0.0
+        val allergy = m["allergy"] as? String ?: ""
+        val opts = (m["options"] as? List<*>)?.filterIsInstance<String>() ?: emptyList()
+        val optionObjs = opts.map { CustomOption(optionId++, it) }
+        return MenuItem(menuId++, category, name, price, allergy, optionObjs)
     }
 
     fun removeMenu(context: Context, item: MenuItem) {
@@ -174,6 +205,9 @@ class MainViewModel : ViewModel() {
         }
     }
 
+    /**
+     * 영수증 텍스트 생성.
+     */
     fun generateOrderText(context: Context): String {
         if (currentOrders.isEmpty()) return ""
         val sb = StringBuilder()
@@ -196,12 +230,15 @@ class MainViewModel : ViewModel() {
         return sb.toString()
     }
 
+    /**
+     * 주문 확정 및 인쇄.
+     */
     fun confirmOrders(context: Context) {
         val text = generateOrderText(context)
         if (text.isEmpty()) return
 
         if (selectedPrinters.isEmpty()) {
-            showError("PRINT", RuntimeException("선택된 프린터가 없습니다. [설정] 탭에서 프린터를 먼저 체크해 주세요."))
+            showError("PRINT", RuntimeException("선택된 프린터가 없습니다."))
             return
         }
         
@@ -224,6 +261,9 @@ class MainViewModel : ViewModel() {
         }
     }
 
+    /**
+     * 테스트 인쇄.
+     */
     fun printTest(context: Context) {
         viewModelScope.launch {
             try {
@@ -250,6 +290,9 @@ class MainViewModel : ViewModel() {
         }
     }
 
+    /**
+     * 프린터 목록 로드.
+     */
     fun loadBluetoothPrinters(context: Context) {
         try {
             val manager = context.getSystemService(BluetoothManager::class.java)

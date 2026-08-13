@@ -200,10 +200,8 @@ fun OrderScreen(modifier: Modifier = Modifier, vm: MainViewModel) {
 
         /** -----------------------------
          * 안드로이드 10 보안 에러 방지용 커스텀 오버레이 확인창
-         * 시스템 Dialog 대신 화면 위에 직접 그리는 방식을 사용하여 WRITE_SETTINGS 에러를 회피합니다.
          * ----------------------------- */
         if (showConfirmOverlay) {
-            // 배경을 어둡게 처리하는 오버레이
             Box(
                 modifier = Modifier
                     .fillMaxSize()
